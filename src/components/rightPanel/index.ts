@@ -1,0 +1,1 @@
+export { RightCommandsPanel } from './RightCommandsPanel';

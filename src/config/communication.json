@@ -1,0 +1,10 @@
+{
+    "servers": {
+        "mapServer": "localhost:3001",
+        "messagesServer": "localhost:8080"
+    },
+    "serversc": {
+        "mapServer": "132.10.108.68:3001",
+        "messagesServer": "132.10.109.140:5000/ws"
+    }
+}
