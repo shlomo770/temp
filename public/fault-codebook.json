@@ -1,0 +1,563 @@
+{
+  "error_codes": [
+    {
+      "code": 2,
+      "severity": "SEVERE",
+      "description": "No Communication with ANTENNA FR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3,
+      "severity": "SEVERE",
+      "description": "No Communication with ANTENNA BR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 4,
+      "severity": "SEVERE",
+      "description": "No Communication with ANTENNA BL",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 5,
+      "severity": "SEVERE",
+      "description": "No Communication with ANTENNA FL",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 8,
+      "severity": "SEVERE",
+      "description": "No Communication with PLATFORM",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 9,
+      "severity": "SEVERE",
+      "description": "No Communication with Tracker",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 11,
+      "severity": "SEVERE",
+      "description": "AWR Missing file ERROR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 12,
+      "severity": "SEVERE",
+      "description": "MSN STATE TRANSITION ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": null
+    },
+    {
+      "code": 13,
+      "severity": "WARNING",
+      "description": "MSN SAFETY ERROR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 21,
+      "severity": "WARNING",
+      "description": "INCONSISTENT STATE ANTENNA FR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 22,
+      "severity": "WARNING",
+      "description": "INCONSISTENT STATE ANTENNA BR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 23,
+      "severity": "WARNING",
+      "description": "INCONSISTENT STATE ANTENNA BL",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 24,
+      "severity": "WARNING",
+      "description": "INCONSISTENT STATE ANTENNA FL",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 25,
+      "severity": "Severe",
+      "description": "No Communication with HFL FR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 26,
+      "severity": "Severe",
+      "description": "No Communication with HFL BR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 27,
+      "severity": "Severe",
+      "description": "No Communication with HFL BL",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 28,
+      "severity": "Severe",
+      "description": "No Communication with HFL FL",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 29,
+      "severity": "Warning",
+      "description": "INCONSISTENT STATE HFL FR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 30,
+      "severity": "Warning",
+      "description": "INCONSISTENT STATE HFL BR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 31,
+      "severity": "Warning",
+      "description": "INCONSISTENT STATE HFL BL",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 32,
+      "severity": "Warning",
+      "description": "INCONSISTENT STATE HFL FL",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 500,
+      "severity": "Warning",
+      "description": "MCU TEMP ERR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 501,
+      "severity": "Warning",
+      "description": "MCU VOLTAGE ERR",
+      "PBIT": "V",
+      "CBIT": null,
+      "IBIT": null
+    },
+    {
+      "code": 1050,
+      "severity": "Warning",
+      "description": "ANTENNA FR MCC Voltage ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1062,
+      "severity": "Warning",
+      "description": "ANTENNA FR MCC CURRENT ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1070,
+      "severity": "Warning",
+      "description": "ANTENNA FR MCC Temperature ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1100,
+      "severity": "Warning",
+      "description": "ANTENNA FR CLK STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1110,
+      "severity": "Warning",
+      "description": "ANTENNA FR BFU PS STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1123,
+      "severity": "Warning",
+      "description": "ANTENNA FR EXC PS STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1138,
+      "severity": "Warning",
+      "description": "ANTENNA FR Group PS Status ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1200,
+      "severity": "Severe",
+      "description": "ANTENNA FR all Frequency ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1201,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F1 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1202,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F2 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1203,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F3 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1204,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F4 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1205,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F5 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1206,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F6 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1207,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F7 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1208,
+      "severity": "Warning",
+      "description": "ANTENNA FR Frequency F8 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1512,
+      "severity": "Severe",
+      "description": "HFL FR_IPB_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1513,
+      "severity": "Severe",
+      "description": "HFL FR_SWIR_COM_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1515,
+      "severity": "Severe",
+      "description": "HFL FR_SWIR_CONFIG_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 1517,
+      "severity": "Warning",
+      "description": "HFL FR_CMOS_COM_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2050,
+      "severity": "Warning",
+      "description": "ANTENNA BR MCC Voltage ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2062,
+      "severity": "Warning",
+      "description": "ANTENNA BR MCC CURRENT ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2070,
+      "severity": "Warning",
+      "description": "ANTENNA BR MCC Temperature ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2100,
+      "severity": "Warning",
+      "description": "ANTENNA BR CLK STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2110,
+      "severity": "Warning",
+      "description": "ANTENNA BR BFU PS STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2123,
+      "severity": "Warning",
+      "description": "ANTENNA BR EXC PS STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2138,
+      "severity": "Warning",
+      "description": "ANTENNA BR Group PS Status ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2200,
+      "severity": "Severe",
+      "description": "ANTENNA BR all Frequency ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2201,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F1 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2202,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F2 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2203,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F3 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2204,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F4 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2205,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F5 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2206,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F6 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2207,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F7 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2208,
+      "severity": "Warning",
+      "description": "ANTENNA BR Frequency F8 ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2512,
+      "severity": "Severe",
+      "description": "HFL BR_IIPB_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2513,
+      "severity": "Severe",
+      "description": "HFL BR_SWIR_COM_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2515,
+      "severity": "Severe",
+      "description": "HFL BR_SWIR_CONFIG_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 2517,
+      "severity": "Warning",
+      "description": "HFL BR_CMOS_COM_ERR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3050,
+      "severity": "Warning",
+      "description": "ANTENNA BL MCC Voltage ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3062,
+      "severity": "Warning",
+      "description": "ANTENNA BL MCC CURRENT ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3070,
+      "severity": "Warning",
+      "description": "ANTENNA BL MCC Temperature ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3100,
+      "severity": "Warning",
+      "description": "ANTENNA BL CLK STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3110,
+      "severity": "Warning",
+      "description": "ANTENNA BL BFU PS STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3123,
+      "severity": "Warning",
+      "description": "ANTENNA BL EXC PS STATUS ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    },
+    {
+      "code": 3138,
+      "severity": "Warning",
+      "description": "ANTENNA BL Group PS Status ERROR",
+      "PBIT": "V",
+      "CBIT": "V",
+      "IBIT": "V"
+    }
+    ]}

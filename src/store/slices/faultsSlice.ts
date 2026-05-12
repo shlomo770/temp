@@ -195,5 +195,7 @@ export const selectPopupQueue = (s: any) => {
     return b.lastSeen - a.lastSeen;
   });
 
-  return candidates;
+  if (candidates.length <= 1) return candidates;
+  const shift = st.ui.popupCursor % candidates.length;
+  return candidates.slice(shift).concat(candidates.slice(0, shift));
 };

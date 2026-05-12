@@ -7,10 +7,15 @@ import { useAppSelector } from "../../../hooks/useAppSelector";
 import { useAppDispatch } from "../../../hooks/useAppDispatch";
 import { useWsConnection } from "../../../hooks/useWsConnection";
 import { setElevation } from "../../../store/slices/elevationSlice";
+import {
+  setActiveMissionName,
+  setPreviewEntityId,
+  requestMissionListUiReset,
+} from "../../../store/slices/entitiesSlice";
 import { formatCoordinates } from "../../../utils/coordinates";
-import { toggleCoordinateSystem, setUTMZone } from "../../../store/slices/coordinatesSlice";
 import { servers } from '../../../config/communication.json'
 import { useWebSocket } from '../../../hooks/useWebSocket';
+import { WsMessageName } from "../../../enums/ws.enum";
 import { SystemModeE, GunStatusE, InsStatusE, RadarStatusE } from "../../../enums/statusBar.enum";
 import { MyPosition } from "../../../types";
 import { SelectedModeE } from "../../../enums/general.enum";
@@ -18,10 +23,18 @@ import RenderRadarIcon from "./RenderRadarIcon";
 import RenderGunIcon from "./RenderGunIcon";
 import RenderAntenaIcon from "./RenderAntenaIcon";
 import RenderIffIcon from "./RenderIffIcon";
-import RenderRecIcon from "./RenderRecIcon";
 import RenderInsIcon from "./RenderInsIcon";
 import FlyoutMenu from "../../ui/FlyoutMenu";
 import RenderDroneIcon from "./RenderDroneIcon";
+
+function selectedModeLabelHe(m: SelectedModeE | null): string {
+  if (m == null) return "—";
+  if (m === SelectedModeE.Mission) return "מבצעי";
+  if (m === SelectedModeE.Training) return "אימון";
+  if (m === SelectedModeE.Planning) return "תכנון";
+  if (m === SelectedModeE.Maintenance) return "תחזוקה";
+  return String(m);
+}
 
 interface StatusBarProps {
     mapServiceRef?: React.MutableRefObject<any>;
@@ -31,8 +44,9 @@ interface StatusBarProps {
     clickedCoords?: { lat: number; lng: number } | null;
     myPosition?: MyPosition | null;
     onCenterToPosition?: (coordinates: { lat: number; lng: number }) => void;
-    onHamburgerClick?: () => void;
+    onHamburgerClick: () => void;
     onTargetsClick?: () => void;
+    openSider: () => void;
 }
 
 const StatusBar: React.FC<StatusBarProps> = ({
@@ -41,6 +55,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
     onCenterToPosition,
     mapServiceRef,
     onHamburgerClick,
+    openSider
 }) => {
     const { sendMessage } = useWebSocket();
     const dispatch = useAppDispatch();
@@ -50,59 +65,24 @@ const StatusBar: React.FC<StatusBarProps> = ({
     const utmZone = useAppSelector((s) => s.coordinates.utmZone);
     const radarStatus = useAppSelector((s) => s.radar.status as RadarStatusE);
     const gunStatus = useAppSelector((s) => s.gun.status as GunStatusE);
-    const missileHealth = useAppSelector((s) => s.gun.missileHealth);
     const insStatus = useAppSelector((s) => s.ins?.status as InsStatusE);
     const systemMode = useAppSelector((s) => s.systemState.systemMode as SystemModeE);
-    const selectedMode = useAppSelector((s) => s.systemState.selectedMode as SelectedModeE);
+    const selectedMode = useAppSelector((s) => s.systemState.selectedMode);
     const missionList = useAppSelector((s) => s.entities.missionsList);
-    const entitiesState = useAppSelector(state => state.entities.allIds);
+    const activeMissionName = useAppSelector((s) => s.entities.activeMissionName);
     const gpsButtonRef = useRef<HTMLDivElement>(null);
     const modeButtonRef = useRef<HTMLDivElement>(null);
     const gunButtonRef = useRef<HTMLDivElement>(null);
     const radarButtonRef = useRef<HTMLDivElement>(null);
     const [mode, setMode] = useState<SystemModeE>(systemMode);
     const [modeFlyoutOpen, setModeFlyoutOpen] = useState(false);
-    const [gpsFlyoutOpen, setGpsFlyoutOpen] = useState(false);
     const [gunFlyoutOpen, setGunFlyoutOpen] = useState(false);
     const [radarFlyoutOpen, setRadarFlyoutOpen] = useState(false);
-    const [ignoreGps, setIgnoreGps] = useState(false);
-    const [files, setFiles] = useState<string[]>([]);
-    const [selected, setSelected] = useState("");
-    const [lat, setLat] = useState("");
-    const [lng, setLng] = useState("");
-    const [hed, setHed] = useState("");
-
-    useEffect(() => {
-        setFiles(missionList);
-    }, [missionList]);
-
-    useEffect(() => {
-        if (!mapServiceRef?.current) return;
-        mapServiceRef?.current?.clearAllEntitiesFromMap();
-        setTimeout(() => {
-            mapServiceRef?.current?.reloadAllEntities();
-        }, 500);
-    }, [entitiesState]);
 
     const trim4 = (v: any) => {
         const p = v.split(".");
         if (p.length === 1) return v;
         return p[0] + "." + p[1].slice(0, 7);
-    };
-
-    const changeLat = (e: any) => {
-        let v = e.target.value.replace(/[^0-9.\-]/g, "");
-        setLat(trim4(v));
-    };
-
-    const changeHed = (e: any) => {
-        let v = e.target.value.replace(/[^0-9.\-]/g, "");
-        setHed(v);
-    };
-
-    const changeLng = (e: any) => {
-        let v = e.target.value.replace(/[^0-9.\-]/g, "");
-        setLng(trim4(v));
     };
 
     useEffect(() => {
@@ -128,24 +108,13 @@ const StatusBar: React.FC<StatusBarProps> = ({
         }
     }, [clickedCoords, dispatch]);
 
-    useEffect(() => {
-        loadFileList();
-    }, []);
+    // useEffect(() => {
+    //     if (ignoreGps && clickedCoords) {
+    //         setLat(trim4(clickedCoords.lat.toString()));
+    //         setLng(trim4(clickedCoords.lng.toString()));
+    //     }
+    // }, [clickedCoords, ignoreGps]);
 
-    useEffect(() => {
-        if (ignoreGps && clickedCoords) {
-            setLat(trim4(clickedCoords.lat.toString()));
-            setLng(trim4(clickedCoords.lng.toString()));
-        }
-    }, [clickedCoords, ignoreGps]);
-
-    const sendToServer = () => {
-        sendMessage('SET_POSITION', {
-            lat: lat,
-            lng: lng,
-            alt: hed
-        });
-    };
 
     const date = useMemo(() => new Date(), []);
     const formattedDate = useMemo(() => date.toLocaleDateString("he-IL"), [date]);
@@ -155,12 +124,18 @@ const StatusBar: React.FC<StatusBarProps> = ({
             onCenterToPosition(myPosition.coordinates);
         }
     }, [myPosition?.coordinates, onCenterToPosition]);
-    const loadFileList = async () => {
-        sendMessage("GET_MISSIONS_LIST", {})
+    const loadMissionFromServer = useCallback(
+        (name: string) => {
+            sendMessage(WsMessageName.LoadMission, { mission_name: name });
+        },
+        [sendMessage]
+    );
+
+    const hamburgerClick = () => {
+        onHamburgerClick();
+        openSider();
     };
-    const loadFromServer = async (name: string) => {
-        sendMessage("LOAD_MISSION", { mission_name: name })
-    };
+
     const getServerIcon = useCallback(() => {
         const color = isWebSocketConnected
             ? COLORS.white
@@ -173,6 +148,8 @@ const StatusBar: React.FC<StatusBarProps> = ({
             </div>
         );
     }, [isWebSocketConnected]);
+
+    
     const getModeIcon = useCallback(() => {
         const iconSize = 30;
         if (mode === SystemModeE.MANUAL) {
@@ -192,7 +169,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
         <>
             <div className="bg-[#1f2937d6] h-[60px] shadow-md flex items-center justify-between px-8 relative text-[13px] text-white z-[99999]">
                 <div className="flex items-center gap-2 min-w-[5rem]">
-                    <FaBars size={30} className="hover:scale-110 transition-transform ml-[-10px] cursor-pointer" onClick={onHamburgerClick} />
+                    <FaBars size={30} className="hover:scale-110 transition-transform ml-[-10px] cursor-pointer" onClick={hamburgerClick} />
                 </div>
 
                 <div className="flex items-center gap-2 min-w-[20rem]">
@@ -211,18 +188,28 @@ const StatusBar: React.FC<StatusBarProps> = ({
                 <div className="flex items-center gap-2 min-w-[10rem] mr-6">
                     <select
                         className="w-full px-6 py-2 h-11 bg-[#1f2937d6] text-white border focus:outline-none transition  min-w-[200px]"
-                        value={selected}
+                        value={activeMissionName ?? ""}
                         onChange={(e) => {
-                            setSelected(e.target.value);
-                            loadFromServer(e.target.value);
-                        }}>
-                        <option value="" disabled>Select Saved File</option>
-                        {files?.map((f) => (
+                            const v = e.target.value.trim();
+                            dispatch(requestMissionListUiReset());
+                            dispatch(setPreviewEntityId(null));
+                            if (!v) {
+                                dispatch(setActiveMissionName(null));
+                                return;
+                            }
+                            dispatch(setActiveMissionName(v));
+                            loadMissionFromServer(v);
+                        }}
+                        aria-label="בחירת משימה"
+                    >
+                        <option value="">כל הישויות</option>
+                        {missionList.map((f) => (
                             <option key={f} value={f}>
                                 {f}
                             </option>
                         ))}
                     </select>
+                    משימה
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -238,10 +225,12 @@ const StatusBar: React.FC<StatusBarProps> = ({
                     <div className="w-px h-8 bg-[#9ca3af]" />
                     <div ref={gunButtonRef} onClick={() => setGunFlyoutOpen((v) => !v)} title="Gun Status" className="flex flex-col items-center gap-1 pb-2 ml-8">
                         <RenderGunIcon status={gunStatus} />
+                        <span className="text-xs">{GunStatusE[gunStatus]}</span>
                     </div>
 
                     <div title="Drone Status" className="flex flex-col items-center gap-1 pb-0">
                         <RenderDroneIcon />
+                        <span className="text-xs">TBD</span>
                     </div>
                 </div>
 
@@ -257,13 +246,15 @@ const StatusBar: React.FC<StatusBarProps> = ({
                         title="Radar Status"
                         className="flex flex-col items-center gap-1 pb-2">
                         <RenderRadarIcon status={radarStatus} />
+                        <span className="text-xs">{RadarStatusE[radarStatus]}</span>
                     </div>
                     <div
                         ref={gpsButtonRef}
-                        onClick={() => setGpsFlyoutOpen((v) => !v)}
-                        title="GPS Status"
+                        // onClick={() => setGpsFlyoutOpen((v) => !v)}
+                        title="Tmaps Status"
                         className="flex flex-col items-center gap-1 pb-2 cursor-pointer">
                         <RenderInsIcon status={insStatus} />
+                        <span className="text-xs">{InsStatusE[insStatus]}</span>
                     </div>
 
                     <div title="IFF Status" className="flex flex-col items-center gap-1 pb-0">
@@ -274,9 +265,9 @@ const StatusBar: React.FC<StatusBarProps> = ({
                 <div className="flex items-center gap-2">
                     <div className="w-px h-8 bg-[#9ca3af]" />
                     <div title="Eec Status" className="flex flex-col items-center gap-1 pb-2">
-                        <RenderRecIcon />
+                        {/* <RenderRecIcon /> */}
                     </div>
-                    <div className="text-base">{selectedMode} Mode</div>
+                    <div className="text-base ml-2 mr-2">מוד {selectedModeLabelHe(selectedMode)}</div>
 
                     <div
                         title={`Server: ${isWebSocketConnected ? "Connected" : "Disconnected"}`}
@@ -301,7 +292,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
                         className="flex flex-col items-center text-white text-xs cursor-pointer  p-2 rounded"
                         onClick={() => {
                             setMode(SystemModeE.AUTO);
-                            sendMessage('SYSTEM_MODE', { system_mode: SystemModeE.AUTO });
+                            sendMessage(WsMessageName.SystemMode, { system_mode: SystemModeE.AUTO });
                             setModeFlyoutOpen(false);
                         }}>
                         <MdMotionPhotosAuto size={20} className="text-white mb-1" />
@@ -311,7 +302,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
                         className="flex flex-col items-center text-white text-xs cursor-pointer  p-2 rounded"
                         onClick={() => {
                             setMode(SystemModeE.SEMI_AUTO);
-                            sendMessage('SYSTEM_MODE', { system_mode: SystemModeE.SEMI_AUTO });
+                            sendMessage(WsMessageName.SystemMode, { system_mode: SystemModeE.SEMI_AUTO });
                             setModeFlyoutOpen(false);
                         }}>
                         <div className="relative mt-2 mb-1 font-bold">
@@ -323,7 +314,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
                         className="flex flex-col items-center text-white text-xs cursor-pointer  p-2 rounded"
                         onClick={() => {
                             setMode(SystemModeE.MANUAL);
-                            sendMessage('SYSTEM_MODE', { system_mode: SystemModeE.MANUAL });
+                            sendMessage(WsMessageName.SystemMode, { system_mode: SystemModeE.MANUAL });
                             setModeFlyoutOpen(false);
                         }}>
                         <RiHand size={20} className="text-white mb-1" />
@@ -337,27 +328,8 @@ const StatusBar: React.FC<StatusBarProps> = ({
                 isOpen={gunFlyoutOpen}
                 placement="bottom"
                 onClose={() => undefined}>
-                <div className="bg-[#1f2937d6] text-white p-4 rounded-lg shadow-lg min-w-[220px]">
-                    <div className="flex justify-between items-center mb-2">
-                        <div className="text-sm font-semibold">GUN / MISSILE</div>
-                        <RenderGunIcon status={gunStatus} />
-                    </div>
-                    {missileHealth ? (
-                        <div className="text-xs text-right leading-relaxed">
-                            <div className="font-semibold mb-1">
-                                {missileHealth.status === 'OK' ? 'OK' : 'FAIL'}
-                            </div>
-                            {missileHealth.status === 'NOT_OK' && missileHealth.reason && (
-                                <div className="text-[11px] text-white/80 break-words">
-                                    {missileHealth.reason}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="text-xs text-right">
-                            {gunStatus && GunStatusE[gunStatus] || GunStatusE[0]}
-                        </div>
-                    )}
+                <div className="text-right text-white text-xs mb-2">
+                    {gunStatus && GunStatusE[gunStatus] || GunStatusE[0]}
                 </div>
             </FlyoutMenu>
 
@@ -367,11 +339,11 @@ const StatusBar: React.FC<StatusBarProps> = ({
                 placement="bottom"
                 onClose={() => undefined}>
                 <div className="text-right text-white text-xs mb-2">
-                    {radarStatus && RadarStatusE[radarStatus] || RadarStatusE[0]}צ 
+                    {radarStatus && RadarStatusE[radarStatus] || RadarStatusE[0]}
                 </div>
             </FlyoutMenu>
 
-            <FlyoutMenu
+            {/* <FlyoutMenu
                 anchorRef={gpsButtonRef}
                 isOpen={gpsFlyoutOpen}
                 placement="bottom"
@@ -396,7 +368,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
                                 value={!ignoreGps ? myPosition?.coordinates ? trim4(myPosition?.coordinates.lat.toString()) : '00.0000' : `${lat}`}
                                 onChange={changeLat}
                                 placeholder="LAT"
-                                maxLength={8}
+                                maxLength={12}
                                 className="min-w-[90px] w-[90px] px-2 py-[2px] text-sm bg-transparent text-white border-r border-gray-700" />
                             <input
                                 type="text"
@@ -404,7 +376,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
                                 value={!ignoreGps ? myPosition?.coordinates ? trim4(myPosition?.coordinates.lng.toString()) : '00.0000' : `${lng}`}
                                 onChange={changeLng}
                                 placeholder="LNG"
-                                maxLength={8}
+                                maxLength={12}
                                 className="min-w-[90px] w-[90px] px-2 py-[2px] text-sm bg-transparent text-white border-r border-gray-700" />
 
                             <input
@@ -431,38 +403,8 @@ const StatusBar: React.FC<StatusBarProps> = ({
                             onClick={sendToServer}
                             className="w-8 h-8 rounded-md border text-white"> ✔ </button>
                     </div>
-
-                    <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
-                        <div className="text-[11px] text-white/80 text-right">תצוגת קואורדינטות (כל הממשק)</div>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <button
-                                type="button"
-                                onClick={() => dispatch(toggleCoordinateSystem())}
-                                className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 border border-gray-500"
-                            >
-                                {isUTM ? 'UTM' : 'WGS84'}
-                            </button>
-                            <span className="text-[11px] text-white/60">לחץ להחלפה</span>
-                        </div>
-                        {isUTM && (
-                            <label className="flex items-center justify-between gap-2 text-[11px]">
-                                <span className="text-white/80">אזור UTM</span>
-                                <select
-                                    value={utmZone}
-                                    onChange={(e) => dispatch(setUTMZone(Number(e.target.value)))}
-                                    className="bg-gray-800 text-white text-xs rounded px-1.5 py-0.5 border border-gray-600"
-                                >
-                                    {[33, 34, 35, 36, 37, 38].map((z) => (
-                                        <option key={z} value={z}>
-                                            {z}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        )}
-                    </div>
                 </div>
-            </FlyoutMenu>
+            </FlyoutMenu> */}
         </>
     );
 };

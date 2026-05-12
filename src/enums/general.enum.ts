@@ -30,9 +30,11 @@ export enum ErrorSeverityE {
 }
 
 export enum SelectedModeE {
-    Mission,
-    Planning,
-    Training
+    Mission = 0,
+    Planning = 1,
+    Training = 2,
+    /** מסך תחזוקה (INS / Gun / Radar) — ללא מפה מבצעית */
+    Maintenance = 3,
 }
 
 export enum SystemModeE {
@@ -44,4 +46,16 @@ export enum SystemModeE {
 export enum BooleanE {
     TRUE,
     FALSE
+}
+
+export enum CaliModeE {
+    YES,
+    NO,
+    NA
+}
+
+export enum PosTypeE {
+    Manual,
+    TMAPS,
+    GPS
 }

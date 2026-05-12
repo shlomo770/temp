@@ -55,7 +55,7 @@ export class TargetStatusService {
     const now = Date.now();
     const settings = store.getState().settings;
     const timeoutMs = settings.inactiveTargetTimeoutSec * 1000;
-    return target && (now - target.lastUpdate) > timeoutMs;
+    return target && (now - target.lastUpdate) > timeoutMs && !target.isDestroyed;
   }
 
   // Helper method to check if a target should be removed (from settings)

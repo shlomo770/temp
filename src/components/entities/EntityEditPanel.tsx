@@ -4,12 +4,15 @@ import { RiImageEditLine } from "react-icons/ri";
 import { useAppDispatch } from '../../hooks/useAppDispatch';
 import { Entity, updateEntity, setSelectedEntity } from '../../store/slices/entitiesSlice';
 import { ENTITY_CATEGORY_OPTIONS } from '../../constants/entityCategories';
-import { EntityFormCategory, parseEntityFormCategory } from '../../enums/entityCategory.enum';
 import { createCirclePolygon, createEllipsePolygon, createSectorPolygon } from '../../utils/geometry';
 import { closePolygonCoordinates, openPolygonCoordinates } from '../../services/entities/EntityGeometryService';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { WsMessageName } from '../../enums/ws.enum';
-import { buildUpdateEntityPayload } from '../../services/webSocket/saveEntityMessage';
+import { buildUpdateEntityPayload, toEntityCategoryEnum } from "../../services/webSocket/saveEntityMessage";
+import { EntityCategoryEnum } from '../../enums/entitis.enum';
+import { swalWarning } from '../../utils/swalDialog';
+
+
 
 interface EntityEditPanelProps {
   entity: Entity | null;
@@ -32,14 +35,17 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
   const [editMode, setEditMode] = useState<boolean>(false);
   const [heightMeters, setHeightMeters] = useState<number>(0);
 
+
   const sendUpdatedEntity = (nextEntity: Entity) => {
     const payload = buildUpdateEntityPayload(
       nextEntity.id,
       nextEntity.category,
       nextEntity.type,
-      nextEntity.coordinates ?? []
+      nextEntity.coordinates ?? [],
+      nextEntity.name
     );
     if (!payload) return;
+    payload.type = toEntityCategoryEnum(payload.type);
     sendMessage(WsMessageName.UpdateEntity, payload);
   };
 
@@ -59,21 +65,21 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
     setHeightMeters(Number.isFinite(alt) ? alt : 0);
   }, [entity?.id, entity?.coordinates]);
 
-  const applyCoordinateChanges = () => {
+  const applyCoordinateChanges = async () => {
     if (!entity || !mapServiceRef?.current) return;
 
     // Polygon must have at least 3 points
     if (entity.type === 'polygon' && editingCoords.length < 3) {
-      alert('פוליגון חייב לכלול לפחות 3 נקודות.');
+      await swalWarning('פוליגון חייב לכלול לפחות 3 נקודות.', 'עריכת פוליגון');
       return;
     }
 
     let geoJsonCoordinates;
-    let nextCoordinates = [...editingCoords];
+    let nextCoordinats = [...editingCoords];
     if (entity.type === 'polygon') {
       // GeoJSON Polygon ring must be closed (first position = last position)
       const closedCoords = closePolygonCoordinates(editingCoords);
-      nextCoordinates = closedCoords;
+      nextCoordinats = closedCoords;
       geoJsonCoordinates = [closedCoords.map(c => [c.lng, c.lat])];
     } else if (entity.type === 'line') {
       geoJsonCoordinates = editingCoords.map(c => [c.lng, c.lat]);
@@ -92,7 +98,7 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
 
     dispatch(updateEntity({
       id: entity.id,
-      coordinates: nextCoordinates,
+      coordinates: nextCoordinats,
       geometry: { type: entity.geometry.type, coordinates: geoJsonCoordinates }
     }));
   };
@@ -111,7 +117,7 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
     setHeightMeters(safeHeight);
     const nextCoords = (entity.coordinates ?? []).map((c: any) => ({ ...c, alt: safeHeight }));
     handleFormChange({ coordinates: nextCoords });
-  };
+  }
 
   const handleCancel = () => {
     dispatch(setSelectedEntity(null));
@@ -119,21 +125,14 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
     onClose();
   };
 
-  const finishEdit = () => {
-    if (mapServiceRef?.current) {
-      mapServiceRef.current.triggerFinishEdit();
-      setEditMode(false);
-    }
-  };
 
   const handleSubmit = () => {
     if (!entity) return;
     sendUpdatedEntity(entity);
-  };
+  }
 
   const handleWaypointsClick = () => {
     if (!entity) return;
-    // נקודה (marker) – אין עריכה גאומטרית בכלל
     if (entity.type === 'marker') {
       return;
     }
@@ -167,7 +166,7 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
   if (!isOpen || !entity) return null;
 
   return (
-    <div className="fixed left-[340px] top-24 max-h-1/2 w-[340px] bg-[#1f2937] shadow-lg z-[1000] p-4">
+    <div className="fixed left-[320px] top-24 max-h-1/2 w-[350px] bg-[#1f2937] shadow-lg z-[1000] p-6">
       <button
         onClick={handleCancel}
         className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors p-2 z-50">
@@ -179,16 +178,15 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
           <div className="text-center border-b border-gray-600 pb-2 mb-2">
             <h3 className="text-xl font-semibold text-white">Editing Entity</h3>
           </div>
-          <div className="mb-1.5 flex space-x-3 items-center">
-            <label className="block text-xs text-sky-100 font-medium min-w-12">Name</label>
+          <div className="mb-1.5 flex space-x-3 item-center">
+            <label className="block text-sm text-sky-100 font-medium min-w-12">Name</label>
             <input
               type="text"
               value={entity?.name || ''}
               onChange={(e) => handleFormChange({ name: e.target.value })}
               className="w-full px-2 py-1 bg-gray-800 text-white border border-gray-600 rounded text-xs focus:outline-none focus:border-sky-500 transition-colors text-right" />
-          </div>
-          <div className="mb-1.5 flex space-x-3 items-center">
-            <label className="block text-xs text-sky-100 font-medium min-w-12">Height</label>
+          </div >
+          <div className="mb-1.5 flex space-x-3 items-center"> <label className="block text-xs text-sky-100 font-medium min-w-12">Height</label>
             <input
               type="number"
               value={heightMeters}
@@ -197,24 +195,26 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
             />
           </div>
 
-          <div className="mb-1.5 flex space-x-3 items-center">
-            <label className="block text-xs text-sky-100 font-medium min-w-12">Type</label>
+          <div className="mb-1.5 flex space-x-3">
+            <label className="block text-sm text-sky-100 font-medium min-w-12">Type</label>
             <select
-              value={entity?.category || EntityFormCategory.FREE}
-              onChange={(e) => handleFormChange({ category: parseEntityFormCategory(e.target.value) })}
+              value={entity?.category || 'FREE'}
+              onChange={(e) => handleFormChange({ category: Number(e.target.value) })}
               className="w-full px-2 py-1 bg-gray-800 text-white border border-gray-600 rounded text-xs focus:outline-none focus:border-sky-500 transition-colors">
-              {ENTITY_CATEGORY_OPTIONS.map((category) => <option key={category} value={category}>{category}</option>)}
+              {ENTITY_CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{EntityCategoryEnum[opt]}</option>
+              ))}
             </select>
 
             <input
               type="color"
               value={entity?.color || '#3b82f6'}
               onChange={(e) => handleFormChange({ color: e.target.value })}
-              className="w-[42%] h-7 bg-gray-800 border border-gray-600 rounded cursor-pointer" />
+              className="w-[50%] h-8 bg-gray-800 border border-gray-600 rounded cursor-pointer" />
           </div>
 
-          <div className="mb-1.5 mt-2.5 flex space-x-3 items-center">
-            <label className="block text-xs text-sky-100 font-medium textright min-w-12">
+          <div className="mb-1.5 mt-2.5 flex space-x-3 item-center">
+            <label className="block text-sm text-sky-100 mb-2 font-medium textright">
               Opacity {entity?.transparency ?? 0}%
             </label>
             <input
@@ -233,20 +233,13 @@ const EntityEditPanel: FC<EntityEditPanelProps> = ({
               className="w-full flex items-center justify-center space-x-2 bg-gray-700 text-white px-2 py-1 rounded mb-2">
               <RiImageEditLine className='w-6 h-6' color='white' />
             </button>
-            {editMode &&
-              <button
-                id="finish-edit-btn"
-                className="w-full flex items-center justify-center space-x-2 bg-gray-700 text-white px-2 py-1 rounded mb-2"
-                onClick={finishEdit}
-              >End </button>
-            }
+
             <button
-              type="button"
               onClick={handleSubmit}
-              className="w-full flex items-center justify-center space-x-2 bg-sky-700 hover:bg-sky-600 text-white px-2 py-1 rounded mb-2"
-            >
-              שליחה
+              className="w-full flex items-center justify-center space-x-2 bg-gray-700 text-white px-2 py-1 rounded mb-2">
+              <span className='text-xs'>שליחה  </span>
             </button>
+
             <button
               onClick={() => setShowCoordinates(!showCoordinates)}
               className="w-full flex items-center justify-center space-x-2 bg-gray-700 text-white px-2 py-1 rounded mb-2">

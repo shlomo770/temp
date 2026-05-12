@@ -16,7 +16,6 @@ const insSlice = createSlice({
   reducers: {
   
     setInsStatus: (state, action: PayloadAction<InsStatusE>) => {
-      
       state.status = action.payload;
     }
   }

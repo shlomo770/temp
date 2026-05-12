@@ -1,49 +1,38 @@
-import { createSelector } from "@reduxjs/toolkit";
 import type { RootState } from "../store";
 import type { Entity } from "../slices/entitiesSlice";
 
 /**
  * ישויות להצגה במפה:
- * - בלי משימה פעילה — כל מה שנטען מהמאגר (GET_DB וכו׳).
- * - עם משימה פעילה — רק ישויות השייכות למשימה (לפי missionsByName).
+ * - ללא משימה פעילה: כל מה שב־`byId`.
+ * - עם משימה פעילה: רק מזהים ב־`missionsByName[activeMissionName].entityIds` שקיימים ב־`byId`.
+ *   רשימת ה־IDs נטענת מ־GET_DB, מ־MISSION_DATA (אחרי LoadMission), או משמירה מקומית — זה קובע מי שייך למשימה.
  */
-export const selectEntitiesForMap = createSelector(
-  [
-    (state: RootState) => state.entities.byId,
-    (state: RootState) => state.entities.activeMissionName,
-    (state: RootState) => state.entities.missionsByName,
-  ],
-  (byId, activeMissionName, missionsByName): Record<string, Entity> => {
-    if (!activeMissionName) {
-      return byId;
-    }
-    const ids = missionsByName[activeMissionName]?.entityIds ?? [];
-    const out: Record<string, Entity> = {};
-    for (const id of ids) {
-      const e = byId[id];
-      if (e) out[id] = e;
-    }
-    return out;
+export function selectEntitiesForMap(state: RootState): Record<string, Entity> {
+  const { byId, activeMissionName, missionsByName } = state.entities;
+  if (!activeMissionName) {
+    return byId;
   }
-);
+  const ids = missionsByName[activeMissionName]?.entityIds ?? [];
+  const out: Record<string, Entity> = {};
+  for (const id of ids) {
+    const e = byId[id];
+    if (e) out[id] = e;
+  }
+  return out;
+}
 
-/** משימה פעילה + ישות preview מהסרגל — רק כשיש משימה פעילה */
-export const selectDisplayedEntitiesOnMap = createSelector(
-  [
-    selectEntitiesForMap,
-    (state: RootState) => state.entities.previewEntityId,
-    (state: RootState) => state.entities.activeMissionName,
-    (state: RootState) => state.entities.byId,
-  ],
-  (baseMap, previewEntityId, activeMissionName, byId): Record<string, Entity> => {
-    if (!previewEntityId || !activeMissionName) return baseMap;
-    const e = byId[previewEntityId];
-    if (!e) return baseMap;
-    if (baseMap[previewEntityId]) return baseMap;
-    return { ...baseMap, [previewEntityId]: e };
-  }
-);
+export function selectDisplayedEntitiesOnMap(state: RootState): Record<string, Entity> {
+  const base = selectEntitiesForMap(state);
+  const { previewEntityId: pid, activeMissionName } = state.entities;
+  if (!pid || !activeMissionName) return base;
+  const e = state.entities.byId[pid];
+  if (!e) return base;
+  if (base[pid]) return base;
+  return { ...base, [pid]: e };
+}
 
 export function selectAllEntitiesById(state: RootState): Record<string, Entity> {
   return state.entities.byId;
 }
+
+

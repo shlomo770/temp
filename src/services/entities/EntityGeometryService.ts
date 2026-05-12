@@ -1,7 +1,7 @@
-import { createCirclePolygon, createEllipsePolygon, createSectorPolygon } from "../../utils/geometry";
-import { EntityType, Coordinates } from "../../types";
+import { createCirclePolygon, createEllipsePolygon, createSectorPolygon, Coordinates } from "../../utils/geometry";
+import { EntityType } from "../../types";
 import { Entity as StoreEntity } from "../../store/slices/entitiesSlice";
-import type { EntityFormCategory } from "../../enums/entityCategory.enum";
+import { EntityCategoryEnum } from "../../enums/entitis.enum";
 
 type GeometryResult = {
   type: string;
@@ -18,14 +18,21 @@ export const closePolygonCoordinates = (coords: Coordinates[]): Coordinates[] =>
   return [...coords, first];
 };
 
-/** Removes duplicate closing point from polygon ring for display (so 3 vertices show as 3, not 4). */
-export const openPolygonCoordinates = (coords: Coordinates[]): Coordinates[] => {
+export const openPolygonCoordinates = (
+  coords: Coordinates[]
+): Coordinates[] => {
   if (coords.length <= 1) return coords;
+
   const first = coords[0];
   const last = coords[coords.length - 1];
-  if (first.lng === last.lng && first.lat === last.lat) {
+
+  if (
+    first.lng === last.lng &&
+    first.lat === last.lat
+  ) {
     return coords.slice(0, -1);
   }
+
   return coords;
 };
 
@@ -83,8 +90,7 @@ export const buildGeometryForUpdate = (entity: StoreEntity, coordinates: Coordin
   let geoJsonCoordinates: any;
 
   if (entity.type === "polygon" || entity.type === "rectangle") {
-    const closed = closePolygonCoordinates(coordinates);
-    geoJsonCoordinates = [closed.map(coord => [coord.lng, coord.lat])];
+    geoJsonCoordinates = [coordinates.map(coord => [coord.lng, coord.lat])];
   } else if (entity.type === "line") {
     geoJsonCoordinates = coordinates.map(coord => [coord.lng, coord.lat]);
   } else if (entity.type === "circle" || entity.type === "ellipse") {
@@ -113,16 +119,17 @@ export const buildGeometryForUpdate = (entity: StoreEntity, coordinates: Coordin
 export const buildNewEntity = (
   id: string,
   name: string,
-  category: EntityFormCategory,
+  category: EntityCategoryEnum,
   type: EntityType,
   coordinates: Coordinates[],
   extraProperties?: Record<string, unknown>
 ): Omit<StoreEntity, "geometry"> & { geometry: GeometryResult } => {
+  const entityColor = category === EntityCategoryEnum.WCO_HOLD ? '#ff0000' : category === EntityCategoryEnum.WCO_FREE ? '#25ff00' : '#3b82f6';
   const entity: Omit<StoreEntity, "geometry"> & { geometry: GeometryResult } = {
     id,
     type,
     name,
-    color: "#3b82f6",
+    color: entityColor,
     transparency: 0.3,
     category,
     visible: true,

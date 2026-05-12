@@ -27,17 +27,21 @@ export function createEntityFromPending(
     }
   }
 
+  const entityColor = category === 'WCO HOLD' ? '#ff0000' : category === 'WCO FREE' ? '#25ff00' : '#3b82f6';
   return {
-    id,
-    type: pending.type as EntityType,
-    coordinates,
-    properties: {
-      name,
-      category,
-      visible: true,
-      color: "#3b82f6",
-      transparency: 30
-    },
-    style: {}
-  };
+  id,
+  type: pending.type as EntityType,
+  coordinates,
+  properties: {
+    name,
+    category,
+    visible: true,
+    color: entityColor,
+    transparency: 30
+  },
+  style: {},
+  name: undefined,
+  category: undefined,
+  geometry: undefined,
+};
 }

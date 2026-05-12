@@ -1,7 +1,6 @@
 import maplibregl from "maplibre-gl";
 import { Entity, EntityType, Coordinates } from "../../types";
 import { getMapStyle } from "../../utils/mapStyle";
-import { isMapLibreImageDecodeError } from "../../utils/mapLibreErrorFilter";
 import { MapLayerManager } from "./MapLayerManager";
 import { MapEntityRenderer } from "./MapEntityRenderer";
 import { MapDrawingService } from "./MapDrawingService";
@@ -79,15 +78,6 @@ export class MapService {
     });
 
     this.map.doubleClickZoom.disable();
-
-    // Offline: swallow tile/image decode errors so missing tiles don't throw
-    this.map.on("error", (e: { error?: Error }) => {
-      if (e.error && isMapLibreImageDecodeError(e.error)) {
-        try {
-          (e as any).preventDefault?.();
-        } catch { /* ignore */ }
-      }
-    });
   }
 
   public setDrawingCallbacks(
@@ -420,3 +410,4 @@ export class MapService {
     }
   }
 }
+

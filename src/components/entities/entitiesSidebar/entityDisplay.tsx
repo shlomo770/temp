@@ -1,5 +1,4 @@
 import React, { FC } from "react";
-import type { EntityFormCategory } from "../../../enums/entityCategory.enum";
 import {
   FaCircleNotch,
   FaEllipsisH,
@@ -20,7 +19,7 @@ export function getEntityTypeLabel(type: string): string {
     case "line":
       return "קו";
     case "sector":
-      return "מגזר (Taboozone)";
+      return "מגזר (Tabbozon)";
     case "rectangle":
       return "מלבן";
     case "target":
@@ -30,7 +29,7 @@ export function getEntityTypeLabel(type: string): string {
   }
 }
 
-export const EntityCategoryBadge: FC<{ category: EntityFormCategory }> = ({ category }) => {
+export const EntityCategoryBadge: FC<{ category: string }> = ({ category }) => {
   const short = String(category || "?")
     .trim()
     .slice(0, 3);

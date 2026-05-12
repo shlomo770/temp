@@ -22,8 +22,6 @@ const slice = createSlice({
                 maxAngle: number | "";
             }>
         ) {
-            console.log(action.payload);
-            
             state.radiusMeters = action.payload.radiusMeters;
             state.angles = [
                 `${action.payload.minAngle}-${action.payload.maxAngle}`,

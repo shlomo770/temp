@@ -1,6 +1,6 @@
 import React, { FC, MutableRefObject } from "react";
 import { FaCrosshairs, FaEye, FaEyeSlash, FaPlus, FaTrashAlt, FaChevronLeft } from "react-icons/fa";
-import { MARKER_ICONS, getMarkerIconChar } from "../../../constants/markerIcons";
+import { MARKER_ICONS, getMarkerIconChar } from "../../../constants/MarkerIcons";
 import type { AppDispatch } from "../../../store/store";
 import type { Entity } from "../../../store/slices/entitiesSlice";
 import {
@@ -10,7 +10,11 @@ import {
   toggleEntityVisibility,
 } from "../../../store/slices/entitiesSlice";
 import { setEntityVisibilityOnMap } from "../../../utils/mapEntityLayerVisibility";
-import { isTaboozoneEntity } from "./entitiesSidebarUtils";
+import { isTabbozonEntity } from "./entitiesSidebarUtils";
+import type { OutboundMessageMap, OutboundMessageName } from "../../../services/webSocket/wsTypes";
+import { toEntityCategoryEnum } from "../../../services/webSocket/saveEntityMessage";
+import { WsMessageName } from "../../../enums/ws.enum";
+import { swalConfirmDanger, swalInfo } from "../../../utils/swalDialog";
 
 export type EntitiesSidebarPointsSectionProps = {
   onBack: () => void;
@@ -23,9 +27,9 @@ export type EntitiesSidebarPointsSectionProps = {
   selectedEntityId: string | null;
   mapServiceRef?: MutableRefObject<any>;
   dispatch: AppDispatch;
-  sendMessage: (name: string, payload?: Record<string, unknown>) => void;
+  sendMessage: <T extends OutboundMessageName>(headerName: T, data: OutboundMessageMap[T]) => void;
   setGroupVisibility: (list: Entity[], visible: boolean) => void;
-  deleteGroup: (list: Entity[], label: string) => void;
+  deleteGroup: (list: Entity[], label: string) => void | Promise<void>;
   onEditEntity: (entity: Entity) => void;
   onCenterToEntity: (entity: Entity) => void;
   onOpenCreateMarkerPanel?: () => void;
@@ -85,7 +89,7 @@ const EntitiesSidebarPointsSection: FC<EntitiesSidebarPointsSectionProps> = ({
   editingEntityId,
 }) => {
   const handleEntityClick = (entity: Entity) => {
-    if (entity.type === "marker" || isTaboozoneEntity(entity)) {
+    if (entity.type === "marker" || isTabbozonEntity(entity)) {
       dispatch(setSelectedEntity(entity.id));
       return;
     }
@@ -93,14 +97,19 @@ const EntitiesSidebarPointsSection: FC<EntitiesSidebarPointsSectionProps> = ({
     onEditEntity(entity);
   };
 
-  const handleDeleteEntity = (e: React.MouseEvent, entity: Entity) => {
+  const handleDeleteEntity = async (e: React.MouseEvent, entity: Entity) => {
     e.stopPropagation();
     if (editingEntityId === entity.id) {
-      alert("לא ניתן למחוק ישות שנמצאת כרגע בעריכה.");
+      await swalInfo("לא ניתן למחוק ישות שנמצאת כרגע בעריכה.", "לא ניתן למחוק");
       return;
     }
-    if (!window.confirm(`למחוק את "${entity.name}"?`)) return;
-    sendMessage("ENTITY_DELETED", { entityId: entity.id });
+    const ok = await swalConfirmDanger(`למחוק את "${entity.name}"?`, {
+      title: "מחיקת ישות",
+      confirmText: "מחק",
+      cancelText: "ביטול",
+    });
+    if (!ok) return;
+    sendMessage(WsMessageName.EntityDeleted, { id: entity.id, type: toEntityCategoryEnum(entity.type) });
     dispatch(removeEntity(entity.id));
     if (mapServiceRef?.current) mapServiceRef.current.removeEntityFromMap?.(entity.id);
     if (selectedEntityId === entity.id) dispatch(setSelectedEntity(null));
@@ -202,11 +211,10 @@ const EntitiesSidebarPointsSection: FC<EntitiesSidebarPointsSectionProps> = ({
                           if (activeMissionName) dispatch(setPreviewEntityId(entity.id));
                         }}
                         onClick={() => handleEntityClick(entity)}
-                        className={`flex cursor-pointer items-center gap-0.5 rounded px-1 py-0.5 text-[10px] transition ${
-                          isSelected
-                            ? "bg-sky-900/35 text-sky-100 ring-1 ring-sky-600/30"
-                            : "text-zinc-300 hover:bg-zinc-800/60"
-                        }`}
+                        className={`flex cursor-pointer items-center gap-0.5 rounded px-1 py-0.5 text-[10px] transition ${isSelected
+                          ? "bg-sky-900/35 text-sky-100 ring-1 ring-sky-600/30"
+                          : "text-zinc-300 hover:bg-zinc-800/60"
+                          }`}
                       >
                         <button
                           type="button"
@@ -229,9 +237,8 @@ const EntitiesSidebarPointsSection: FC<EntitiesSidebarPointsSectionProps> = ({
                             const map = mapServiceRef?.current?.getMap?.() ?? null;
                             setEntityVisibilityOnMap(map, entity.id, nextVisible);
                           }}
-                          className={`${iconBtn} ${
-                            entity.visible ? "text-emerald-500/90" : "text-zinc-600"
-                          }`}
+                          className={`${iconBtn} ${entity.visible ? "text-emerald-500/90" : "text-zinc-600"
+                            }`}
                           title={entity.visible ? "הסתר" : "הצג"}
                         >
                           {entity.visible ? (

@@ -1,7 +1,7 @@
 import { Entity } from "../../types";
 import { store } from "../../store/store";
-import { selectDisplayedEntitiesOnMap } from "../../store/selectors/entitiesSelectors";
 import { MapEntityManager } from "./MapEntityManager";
+import { selectDisplayedEntitiesOnMap } from "../../store/selectors/entitiesSelectors";
 
 export class MapEntityRenderer {
   private map: maplibregl.Map;
@@ -49,7 +49,6 @@ export class MapEntityRenderer {
     });
   }
 
-    /** כל הישויות כשאין משימה פעילה; רק ישויות המשימה כשמשימה נטענת — תואם ל־selectDisplayedEntitiesOnMap */
   public reloadAllEntities() {
     if (!this.map) return;
     this.clearAllEntitiesFromMap();

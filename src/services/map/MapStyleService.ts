@@ -1,11 +1,8 @@
-import maplibregl from "maplibre-gl";
+// import maplibregl from "maplibre-gl";
 import { store } from "../../store/store";
-import { selectDisplayedEntitiesOnMap } from "../../store/selectors/entitiesSelectors";
+import { servers } from "../../config/communication.json";
 import { MapDrawingService } from "./MapDrawingService";
 import { MapEntityRenderer } from "./MapEntityRenderer";
-
-/** לבדיקה – טילים מהרשת בלבד (ללא שרת מקומי) */
-const PUBLIC_RASTER_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 export class MapStyleService {
   private map: maplibregl.Map;
@@ -54,6 +51,9 @@ export class MapStyleService {
       }
     }, 10000);
 
+    const state = store.getState();
+    const allEntities = Object.values(state.entities.byId);
+    const allTargets = Object.values(state.targets.byId);
     this.drawingService.removeDrawControl();
 
     this.map.setStyle(newStyle);
@@ -61,11 +61,12 @@ export class MapStyleService {
       try {
         this.drawingService.removeDrawControl();
         this.drawingService.rebuildDrawControl();
-        const entitiesForMap = Object.values(selectDisplayedEntitiesOnMap(store.getState()));
-        if (entitiesForMap.length > 0) {
-          entitiesForMap.forEach((entity) => {
-            if (entity) this.entityRenderer.addEntityToMap(entity);
+        if (allEntities.length > 0) {
+          allEntities.forEach(entity => {
+            this.entityRenderer.addEntityToMap(entity);
           });
+        }
+        if (allTargets.length > 0) {
         }
         this.notifyStyleChanged();
         this.isChangingStyle = false;
@@ -143,15 +144,16 @@ export class MapStyleService {
 
   public setMapType(mapType: string) {
     if (!this.map) return;
-    const src = this.map.getSource("rastertiles") as maplibregl.RasterTileSource | undefined;
-    if (src && src.setTiles) {
-      src.setTiles([`${PUBLIC_RASTER_TILES}?v=${Date.now()}`]);
-    }
+    const src = this.map.getSource("rastertiles") as maplibregl.RasterTileSource;
+    const ver = Date.now();
+    src.setTiles([`http://${servers.mapServer}/tiles/${mapType}/{z}/{x}/{y}.webp?v=${ver}`]);
     const center = this.map.getCenter();
+
     this.map.easeTo({
       center: [center.lng + 5, center.lat],
       duration: 0
     });
+
     setTimeout(() => {
       this.map?.easeTo({
         center: [center.lng, center.lat],

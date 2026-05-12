@@ -1,5 +1,4 @@
 import { FC, useMemo, Dispatch, SetStateAction, MutableRefObject, useRef, memo, useState, useCallback, useEffect } from 'react';
-import { MapboxOverlay } from '@deck.gl/mapbox';
 import { LatLng } from "../../utils/geometry";
 import { attachUnifiedMapClick, detachUnifiedMapClick } from '../../utils/mapEvents';
 import { SystemModeE, InsStatusE, RadarStatusE } from '../../enums/statusBar.enum';
@@ -9,33 +8,28 @@ import { useAppDispatch } from '../../hooks/useAppDispatch';
 import { useTargetWebSocket } from '../../hooks/useTargetWebSocket';
 import { MapService } from '../../services/map/MapService';
 import { convertStoreEntityToEditable } from './MapHelpers';
-import { isTaboozoneEntity } from '../entities/entitiesSidebar/entitiesSidebarUtils';
 import ContextMenu from '../ui/ContextMenu';
 import ConfirmPromptInsLocation from '../ui/ConfirmPromptInsLocation';
 import TargetSelectionMenu from '../ui/TargetSelectionMenu';
-import TargetsLayer from './layers/targets/TargetsLayer';
+import TargetsLayerManager from './layers/targets/TargetsLayerManager';
 import MyPositionMarker from './layers/myPosition/MyPositionMarker';
-import RealtimeDeckOverlay from './deck/RealtimeDeckOverlay';
-import { pickRealtimeTargetIdsAtPoint } from './deck/pickRealtimeTargets';
 import CompassNeedle from './tools/CompassNeedle';
 import StatusBar from '../layout/statusBar/StatusBar';
 import MapControls from './tools/MapControls';
 import VideoWinButton from './tools/VideoWinButton';
-import VideoWindow from './tools/VideoWindow';
+import VideoPlayer from './tools/VideoWindow';
 import EntitiesManager from '../entities/EntitiesManager';
 import MapDimmerAuto from './tools/MapDimmerAuto';
 import RadarNonCoverageLayer from './layers/radar/RadarNonCoverageLayer';
 import ToastHost from "../ui/ToastHost";
 import TabozoonLayer from './layers/tabozoon/TabozoonLayer';
-import MissileLayer from './layers/missiles/MissileLayer';
-import GunLosLayer from './layers/gun/GunLosLayer';
 import { useMapEntities } from './hooks/useMapEntities';
+import { selectDisplayedEntitiesOnMap } from '../../store/selectors/entitiesSelectors';
 import { useMapDrawing } from './hooks/useMapDrawing';
 import { useMapMeasurement } from './hooks/useMapMeasurement';
-import { WebSocketService } from '../../services/webSocket/WebSocketService';
-import { WsMessageName } from '../../enums/ws.enum';
-import { validateOutboundMessage } from '../../services/webSocket/wsValidators';
-import { store } from '../../store/store';
+import { updateClickCord } from '../../store/slices/myPositionSlice';
+import GunLosLayer from './layers/gun/GunLosLayer';
+
 
 interface MapContainerProps {
   isMeasuring: boolean;
@@ -53,7 +47,7 @@ interface MapContainerProps {
   gpsStatus?: InsStatusE;
   radarStatus?: RadarStatusE;
   myPosition?: MyPosition;
-  onHamburgerClick?: () => void;
+  onHamburgerClick: () => void;
   onAbortTarget: (targetId: string) => void;
   handleTargetInfo: (targetId: string, identity: boolean) => void;
   onTargetsClick?: () => void;
@@ -64,12 +58,13 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
   const mapServiceRef = useRef<MapService | null>(null);
   const { allocateTarget } = useTargetWebSocket();
   const dispatch = useAppDispatch();
-  const entitiesState = useAppSelector(state => state.entities);
+  const entitiesState = useAppSelector((state) => state.entities);
+  const entitiesForMap = useAppSelector(selectDisplayedEntitiesOnMap);
   const targetsState = useAppSelector(state => state.targets, (left, right) => { return left.byId === right.byId && left.allIds.length === right.allIds.length });
   const mapState = useAppSelector(state => state.map);
   const radarState = useAppSelector(state => state.radar);
-  const myPositionState = useAppSelector(s => s.myPosition);
-  const myPosition = myPositionState.coordinates;
+  const myPosition = useAppSelector(s => s.myPosition.coordinates);
+  const gunAzimut = useAppSelector(s => s.myPosition.gunAzimut);
   const { radarNonCoverage, radarRange } = radarState;
   const byId = useMemo(() => entitiesState.byId, [entitiesState.byId]);
   const drawingMode = useMemo(() => entitiesState.drawingMode, [entitiesState.drawingMode]);
@@ -77,7 +72,6 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
   const selectedMapType = useMemo(() => mapState.selectedMapType, [mapState.selectedMapType]);
   const selectedMapTypeObj = useMemo(() => mapTypes.find(mt => mt.id === selectedMapType) || mapTypes[0], [selectedMapType]);
   const [contextMenu, setContextMenu] = useState<{ entityId: string; x: number; y: number; isTarget: boolean; coordinates?: LatLng } | null>(null);
-  const realtimeDeckOverlayRef = useRef<MapboxOverlay | null>(null);
   const [drawUiState, setDrawUiState] = useState<{
     mode: "create" | "edit";
     type: "circle" | "ellipse" | "polygon";
@@ -90,8 +84,9 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
   const [myPositionMarkerReady, setMyPositionMarkerReady] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [bearing, setBearing] = useState(0);
+  const [openSider, setOpenSider] = useState(false);
   const { handleEntityDrawn } = useMapDrawing({ mapServiceRef });
-  const { handleEntityUpdated, handleEntityDeleted } = useMapEntities({ mapServiceRef });
+  const { handleEntityUpdated, handleEntityDeleted } = useMapEntities({ mapServiceRef, entitiesById: entitiesForMap });
   const { tooltip, measurementUiState, finishMeasurement } = useMapMeasurement({
     mapServiceRef,
     measurementMode: props.measurementMode,
@@ -121,9 +116,11 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
         mapState.center,
         mapState.zoom
       );
+
       mapService.setDrawingUiListener((state: any) => {
         setDrawUiState(state);
       });
+
       if (props.mapServiceRef) props.mapServiceRef.current = mapService;
     }
 
@@ -194,8 +191,7 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
 
   useEffect(() => {
     if (mapServiceRef.current) {
-      const modeForDrawing = drawingMode === 'measure-area' ? null : drawingMode;
-      mapServiceRef.current.setDrawingMode(modeForDrawing);
+      mapServiceRef.current.setDrawingMode(drawingMode);
     }
   }, [drawingMode]);
 
@@ -245,6 +241,25 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
     return map;
   }, [myPositionMarkerReady]);
 
+
+  const handleClick = useCallback((e: any) => {
+    if (!drawingMode && !props.isMeasuring) {
+      const existingButton = document.getElementById('marker-button');
+      if (existingButton) existingButton.remove();
+    }
+    props.setClickedCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    dispatch(updateClickCord({ lat: e.lngLat.lat, lng: e.lngLat.lng }));
+  }, [drawingMode, props.isMeasuring, props.setClickedCoords]);
+
+  useEffect(() => {
+    if (!mapServiceRef.current) return;
+    const map = (mapServiceRef.current as any).map;
+    if (!map) return;
+
+    const wrappedClickHandler = attachUnifiedMapClick(map, handleClick);
+    return () => { detachUnifiedMapClick(map, wrappedClickHandler); };
+  }, [handleClick]);
+
   useEffect(() => {
     if (!mapServiceRef.current) return;
     const map = (mapServiceRef.current as any).map;
@@ -258,13 +273,23 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
           return exists;
         });
 
-      const entityFeatures =
-        entityLayers.length > 0
-          ? map.queryRenderedFeatures(e.point, { layers: entityLayers })
-          : [];
+      const targetLayers = ['targets-layer', 'targets-circle-layer']
+        .filter(layerId => {
+          const exists = map.getLayer(layerId);
+          return exists;
+        });
 
-      if (entityFeatures.length > 0) {
-        const feature = entityFeatures[0];
+      const availableLayers = [...entityLayers, ...targetLayers];
+
+      if (availableLayers.length === 0) {
+        setContextMenu(null);
+        return;
+      }
+
+      const features = map.queryRenderedFeatures(e.point, { layers: availableLayers });
+
+      if (features.length > 0) {
+        const feature = features[0];
         const layerId = feature.layer.id;
         if (layerId.startsWith('entity-layer-')) {
           const entityId = layerId.replace('entity-layer-', '');
@@ -281,98 +306,95 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
             return;
           }
         }
-      }
 
-      const pickedIds = pickRealtimeTargetIdsAtPoint(
-        realtimeDeckOverlayRef.current,
-        e.point.x,
-        e.point.y
-      );
-      if (pickedIds.length > 0) {
-        const byTarget = store.getState().targets.byId;
-        const uniqueTargets = pickedIds
-          .map((id: string) => {
-            const target = byTarget[id];
-            return target
-              ? {
-                  id: target.id,
-                  type: target.type,
-                  friend: false,
-                }
-              : null;
-          })
-          .filter(Boolean);
+        if (layerId === 'targets-layer' || layerId === 'targets-circle-layer') {
+          const targetFeatures = features.filter((f: any) =>
+            (f.layer.id === 'targets-layer' || f.layer.id === 'targets-circle-layer') &&
+            f.properties?.id
+          );
 
-        if (uniqueTargets.length > 1) {
-          setTargetSelectionMenu({
-            targets: uniqueTargets as Array<{ id: string; type: string; friend: boolean }>,
-            x: e.originalEvent.clientX,
-            y: e.originalEvent.clientY,
-          });
-        } else if (uniqueTargets.length === 1) {
-          setContextMenu({
-            entityId: (uniqueTargets[0] as { id: string }).id,
-            x: e.originalEvent.clientX,
-            y: e.originalEvent.clientY,
-            isTarget: true,
-          });
+          const uniqueTargets = targetFeatures
+            .map((f: any) => f.properties?.id)
+            .filter((id: any, index: number, arr: any[]) => id && arr.indexOf(id) === index)
+            .map((id: string) => {
+              const target = targetsState.byId[id];
+              return target ? {
+                id: target.id,
+                type: target.type,
+                friend: target.friend
+              } : null;
+            })
+            .filter(Boolean);
+
+          if (uniqueTargets.length > 1) {
+            setTargetSelectionMenu({
+              targets: uniqueTargets,
+              x: e.originalEvent.clientX,
+              y: e.originalEvent.clientY
+            });
+          } else if (uniqueTargets.length === 1) {
+            setContextMenu({
+              entityId: uniqueTargets[0].id,
+              x: e.originalEvent.clientX,
+              y: e.originalEvent.clientY,
+              isTarget: true
+            });
+          }
+
+          safePreventDefault(e);
+          return;
         }
-
-        safePreventDefault(e);
-        return;
+      } else {
+        setContextMenu(null);
       }
-
-      setContextMenu(null);
     };
 
     const handleMapClick = (e: any) => {
-      if (!drawingMode && !props.isMeasuring) {
-        const existingButton = document.getElementById('marker-button');
-        if (existingButton) existingButton.remove();
+      const targetLayers = ['targets-layer', 'targets-circle-layer']
+        .filter(layerId => map.getLayer(layerId));
+      if (targetLayers.length === 0) {
+        return;
       }
-      props.setClickedCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      const features = map.queryRenderedFeatures(e.point, { layers: targetLayers });
 
-      const pickedIds = pickRealtimeTargetIdsAtPoint(
-        realtimeDeckOverlayRef.current,
-        e.point.x,
-        e.point.y
-      );
-
-      if (pickedIds.length > 0) {
-        const byTarget = store.getState().targets.byId;
-        const uniqueTargets = pickedIds
+      if (features.length > 0) {
+        const uniqueTargets = features
+          .map((f: any) => f.properties?.id)
+          .filter((id: any, index: number, arr: any[]) => id && arr.indexOf(id) === index)
           .map((id: string) => {
-            const target = byTarget[id];
-            return target
-              ? {
-                  id: target.id,
-                  type: target.type,
-                  friend: false,
-                }
-              : null;
+            const target = targetsState.byId[id];
+            return target ? {
+              id: target.id,
+              type: target.type,
+              friend: target.friend
+            } : null;
           })
           .filter(Boolean);
 
         if (uniqueTargets.length > 1) {
           setTargetSelectionMenu({
-            targets: uniqueTargets as Array<{ id: string; type: string; friend: boolean }>,
+            targets: uniqueTargets,
             x: e.originalEvent.clientX,
-            y: e.originalEvent.clientY,
+            y: e.originalEvent.clientY
           });
           return;
         } else if (uniqueTargets.length === 1) {
           setContextMenu({
-            entityId: (uniqueTargets[0] as { id: string }).id,
+            entityId: uniqueTargets[0].id,
             x: e.originalEvent.clientX,
             y: e.originalEvent.clientY,
-            isTarget: true,
+            isTarget: true
           });
           return;
         }
       }
 
-      setContextMenu((prev) => (prev ? null : prev));
-      setTargetSelectionMenu((prev) => (prev ? null : prev));
+      if (contextMenu) {
+        setContextMenu(null)
+      }
+      if (targetSelectionMenu) {
+        setTargetSelectionMenu(null);
+      }
     };
 
     map.on('contextmenu', handleContextMenu);
@@ -431,7 +453,8 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
       }
       detachUnifiedMapClick(map, wrappedClickHandler);
     };
-  }, [byId, drawingMode, props.isMeasuring, props.setClickedCoords]);
+  }, [byId, contextMenu, targetsState.byId]);
+
 
   if (props.focusEntityRef) {
     props.focusEntityRef.current = (entity: Entity) => {
@@ -458,19 +481,31 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
 
   return (
     <div className="relative w-full h-full min-h-0 overflow-hidden flex">
+
       <ContextMenu
-        open={contextMenu !== null && !contextMenu.isTarget}
+        open={contextMenu !== null}
         x={contextMenu ? contextMenu.x : 0}
         y={contextMenu ? contextMenu.y : 0}
         onClose={() => setContextMenu(null)}
         entityId={contextMenu ? contextMenu.entityId : ''}
         entityName={contextMenu && contextMenu.entityId ?
           (byId[contextMenu.entityId]?.properties?.name || targetsState.byId[contextMenu.entityId]?.type || `Target ${contextMenu.entityId}`) : ''}
-        isTarget={false}
+        isTarget={contextMenu ? contextMenu.isTarget : false}
+        targetIsFriend={
+          Boolean(
+            contextMenu?.isTarget &&
+              contextMenu.entityId &&
+              targetsState.byId[contextMenu.entityId]?.friend
+          )
+        }
         onEdit={() => {
           if (!contextMenu || !contextMenu.entityId || !mapServiceRef.current) return;
           const storeEntity = byId[contextMenu.entityId];
-          if (storeEntity && isTaboozoneEntity(storeEntity)) {
+          const isTABOOZONEEntity =
+            storeEntity?.type === 'sector' &&
+            (String(storeEntity?.category || '').trim().toUpperCase() === 'TABOOZONE' ||
+              String(storeEntity?.name || '').trim().toUpperCase() === 'TABOOZONE');
+          if (isTABOOZONEEntity) {
             setContextMenu(null);
             return;
           }
@@ -478,28 +513,23 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
           if (converted) mapServiceRef.current.setEditMode(contextMenu.entityId, converted);
           setContextMenu(null);
         }}
+
         onDelete={() => {
           if (contextMenu && contextMenu.entityId) {
-            import('../../store/slices/entitiesSlice').then(({ removeEntity }) => {
-              const entityToDelete = byId[contextMenu.entityId];
-              if (entityToDelete) {
-                const payload = { entityId: contextMenu.entityId };
-                if (validateOutboundMessage(WsMessageName.EntityDeleted, payload)) {
-                  WebSocketService.getInstance().sendMessage(WsMessageName.EntityDeleted, payload);
-                }
-              }
-              dispatch(removeEntity(contextMenu.entityId));
-            });
-            if (mapServiceRef.current) mapServiceRef.current.removeEntityFromMap(contextMenu.entityId);;
-            setContextMenu(null);
           }
         }}
+
         onDesignateTarget={() => {
           if (contextMenu && contextMenu.entityId) {
             const target = targetsState.byId[contextMenu.entityId];
             if (target) {
+              const updatedTarget = {
+                ...target,
+                isAssigned: true,
+                status: 'designated'
+              };
               import('../../store/slices/targetsSlice').then(({ updateTarget }) => {
-                dispatch(updateTarget({ ...target, status: 'designated' }));
+                dispatch(updateTarget(updatedTarget));
               });
             }
             setContextMenu(null);
@@ -509,7 +539,7 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
           if (contextMenu && contextMenu.entityId) {
             const target = targetsState.byId[contextMenu.entityId];
             if (target) {
-              handleTargetInfoAction(target.id, false)
+              handleTargetInfoAction(target.id, !target.friend)
             }
             setContextMenu(null);
           }
@@ -524,43 +554,11 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
           setContextMenu(null);
         }}
       />
-      {contextMenu?.isTarget && contextMenu.entityId && (
-        <div
-          className="fixed z-[10001] flex gap-2 rounded-lg border border-slate-500/50 bg-gray-800/90 p-2 shadow-xl pointer-events-auto"
-          style={{
-            left: contextMenu.x,
-            top: contextMenu.y,
-            transform: 'translate(-50%, 6px)',
-          }}
-        >
-          <button
-            type="button"
-            className="flex min-h-[80px] min-w-[80px] cursor-pointer flex-col items-center justify-center rounded-lg border border-indigo-300/60 bg-gray-900/60 text-xs font-bold text-indigo-300"
-            onClick={() => {
-              allocateTarget(contextMenu.entityId);
-              setContextMenu(null);
-            }}
-          >
-            <img src="/icons/targets/Target_Point.png" alt="" className="mb-1 w-11" />
-            Allocat
-          </button>
-          <button
-            type="button"
-            className="flex min-h-[80px] min-w-[80px] cursor-pointer flex-col items-center justify-center rounded-lg border border-indigo-300/60 bg-gray-900/60 text-xs font-bold text-indigo-300"
-            onClick={() => {
-              handleTargetInfoAction(contextMenu.entityId, false);
-              setContextMenu(null);
-            }}
-          >
-            Friend
-          </button>
-        </div>
-      )}
       {drawUiState && drawUiPos && drawUiState.canFinish && (
         <button
           type="button"
           onClick={() => mapServiceRef.current?.finishEdit()}
-          className="absolute z-[1000] flex h-9 w-9 items-center justify-center rounded-full bg-green-500 text-white shadow-lg"
+          className="absolute z-[1000] flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white shadow-lg"
           style={{
             left: drawUiPos.x + 12,
             top: drawUiPos.y - 12,
@@ -573,25 +571,25 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
         measureUiPos &&
         measurementUiState.mode === "measure-area" &&
         measurementUiState.canFinish && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            finishMeasurement();
-            import('../../store/slices/entitiesSlice').then(({ setDrawingMode }) => {
-              dispatch(setDrawingMode(null));
-            });
-          }}
-          className="absolute z-[1000] flex h-9 w-9 items-center justify-center rounded-full bg-green-500 text-white shadow-lg"
-          style={{
-            left: measureUiPos.x + 12,
-            top: measureUiPos.y - 12,
-          }}
-        >
-          ✓
-        </button>
-      )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              finishMeasurement();
+              import('../../store/slices/entitiesSlice').then(({ setDrawingMode }) => {
+                dispatch(setDrawingMode(null));
+              });
+            }}
+            className="absolute z-[1000] flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white shadow-lg"
+            style={{
+              left: measureUiPos.x + 12,
+              top: measureUiPos.y - 12,
+            }}
+          >
+            ✓
+          </button>
+        )}
       <TargetSelectionMenu
         open={targetSelectionMenu !== null}
         x={targetSelectionMenu ? targetSelectionMenu.x : 0}
@@ -625,31 +623,24 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
           {tooltip.text}
         </div>
       )}
-      {mapObject && (
-        <RealtimeDeckOverlay
-          map={mapObject}
-          overlayRef={realtimeDeckOverlayRef}
-          onAbortTarget={handleAbortAction}
-        />
-      )}
+      {mapObject && mapServiceRef.current && (<TargetsLayerManager map={mapObject} onAbort={handleAbortAction} />)}
       {mapObject && <MyPositionMarker map={mapObject} />}
-      {mapObject && <TargetsLayer map={mapObject} showLabels={false} />}
-      {mapObject && <MissileLayer map={mapObject} />}
-      {mapObject && (
-        <GunLosLayer
-          map={mapObject}
-          position={myPosition}
-          gunAzimut={myPositionState.gunAzimut}
-        />
-      )}
+      {mapObject && <GunLosLayer map={mapObject} position={myPosition} gunAzimut={gunAzimut} />}
       {mapObject && <MapDimmerAuto map={mapObject} opacity={brightness} />}
       {mapObject && <RadarNonCoverageLayer map={mapObject} center={[myPosition.lng, myPosition.lat]} radiusMeters={radarRange} angles={radarNonCoverage} lineWidth={2} />}
       {mapObject && <TabozoonLayer map={mapObject} center={[myPosition.lng, myPosition.lat]} />}
       {mapObject && <CompassNeedle bearing={bearing} />}
-      {mapObject && <EntitiesManager map={mapObject} mapServiceRef={mapServiceRef} />}
-      <MapControls mapServiceRef={mapServiceRef} myPosition={props.myPosition} />
-      <VideoWinButton onOpen={() => setIsVideoOpen(!isVideoOpen)} />
-      <VideoWindow isOpen={isVideoOpen} onClose={() => setIsVideoOpen(false)} />
+      {mapObject && !openSider && <EntitiesManager map={mapObject} mapServiceRef={mapServiceRef} />}
+
+      {(!openSider) &&
+        <div>
+          <MapControls mapServiceRef={mapServiceRef} myPosition={props.myPosition} />
+          <VideoWinButton onOpen={() => setIsVideoOpen(!isVideoOpen)} />
+        </div>
+      }
+
+      {/* {mapObject && <TacticalCompassWidget/>} */}
+      <VideoPlayer isOpen={isVideoOpen} />
       <ConfirmPromptInsLocation />
       <ToastHost />
       <div className="fixed top-0 left-0 right-0 z-[9999999]">
@@ -667,6 +658,7 @@ const MapContainer: FC<MapContainerProps> = memo((props) => {
               }
             }
           }}
+          openSider={() => setOpenSider(!openSider)}
           onHamburgerClick={props.onHamburgerClick}
           onTargetsClick={props.onTargetsClick}
         />

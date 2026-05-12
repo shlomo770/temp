@@ -1,3 +1,6 @@
+import type { CaliModeE } from "../enums/general.enum";
+import type { LatLng } from "../utils";
+
 // Basic types
 export interface Coordinates {
   lng: number;
@@ -5,28 +8,20 @@ export interface Coordinates {
   alt?: number
 }
 
-export type mapTypesSelector = [
+export const mapTypes = [
   { id: 'vector-global', name: 'Vector', icon: '🌍', type: 'vector' },
   { id: 'satellite-raster', name: 'Satellite', icon: '🛰', type: 'raster' },
   { id: 'osm-raster', name: 'OSM Raster', icon: '🗺', type: 'raster' },
   { id: 'carto-dark', name: 'Carto Dark', icon: '🌑', type: 'vector' },
   { id: 'carto-light', name: 'Carto Light', icon: '🌕', type: 'vector' }
-];
+] as const;
 
-export type PanelType =
-  | 'radar'
-  | 'failures'
-  | 'flightControl'
-  | 'terrain'
-  | 'mode'
-  | 'settings'
-  | 'logs'
-  | 'location'
-  | 'xmlSend'
-  | 'serverMessages'
-  | null;
+export const mapTypesSelected = mapTypes;
+export type mapTypesSelector = typeof mapTypes;
 
-export type EntityType = 'polygon' | 'line' | 'rectangle' | 'circle' | 'ellipse' | 'sector' | 'marker' | 'target' | 'measure';
+export type PanelType = 'radar' | 'failures' | 'mode' | 'settings' | 'location' | 'serverMessages' | null;
+
+export type EntityType = 'polygon' | 'line' | 'rectangle' | 'circle' | 'ellipse' | 'sector' | 'marker' | 'target' | 'measure' | 'measure-area';
 
 export interface EntityStyle {
   fillColor?: string;
@@ -39,6 +34,9 @@ export interface EntityStyle {
 
 // Enhanced entity interface
 export interface Entity {
+  name: any;
+  category: any;
+  geometry: any;
   id: string;
   type: EntityType;
   coordinates: Coordinates[];
@@ -101,11 +99,23 @@ export interface LOSResult {
   sector?: any; // Optional sector data from LOS_SECTOR message
 }
 
+
 export interface MyPosition {
   coordinates: Coordinates;
-  heading?: number; // degrees
-  gunAzimut?: number; // 0..360 from LOS message
-  los?: LineOfSight; // optional line of sight data
+  heading: number;
+  gps_pos: LatLng;
+  tmaps_pos: LatLng;
+  manual_pos: { lat: number; lng: number, alt: number, heading: number };
+  use_gps: boolean;
+  use_manual: boolean;
+  zone: number;
+  fig_of_merit: number;
+  pitch: number;
+  roll: number;
+  distance_travelled: number;
+  odo_cali_finished?: CaliModeE;
+  clickCord?: { lat: number, lng: number };
+  gunAzimut?: number;
 }
 
 export interface MyPositionState {
@@ -118,5 +128,4 @@ export interface DrawMode {
   isActive: boolean;
 }
 
-// Re-export enhanced types
-export * from './enhanced'; 
+// Re-export enhanced types (removed - unused)

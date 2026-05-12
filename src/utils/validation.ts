@@ -16,11 +16,6 @@ export function isValidCoordinates(lat: number, lng: number): boolean {
   return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
-export function isValidLatLng(coords: { lat: number; lng: number }): boolean {
-  if (!coords) return false;
-  return isValidCoordinates(Number(coords.lat), Number(coords.lng));
-}
-
 /**
  * Validate if a color is a valid hex color
  */

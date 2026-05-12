@@ -1,3 +1,102 @@
+// import { useEffect, useState } from "react";
+// import { MapService } from "../../../services/map/MapService";
+// import { calculateDistance, formatDistance } from "../../../utils/geometry";
+// import { attachUnifiedMapClick, detachUnifiedMapClick } from "../../../utils/mapEvents";
+
+// type UseMapMeasurementParams = {
+//   mapServiceRef: React.MutableRefObject<MapService | null>;
+//   isMeasuring: boolean;
+//   measurePoints: { lng: number; lat: number }[];
+//   setMeasurePoints: React.Dispatch<React.SetStateAction<{ lng: number; lat: number }[]>>;
+// };
+
+// export const useMapMeasurement = ({
+//   mapServiceRef,
+//   isMeasuring,
+//   measurePoints,
+//   setMeasurePoints,
+// }: UseMapMeasurementParams) => {
+//   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+
+//   useEffect(() => {
+//     if (!isMeasuring || !mapServiceRef.current) {
+//       if (measurePoints.length === 2 && !isMeasuring) {
+//         setMeasurePoints([]);
+//       }
+//       return;
+//     }
+//     const map = (mapServiceRef.current as any).map;
+//     if (!map) return;
+//     const handleClick = (e: any) => {
+//       if (measurePoints.length < 2) {
+//         setMeasurePoints(prev => [...prev, { lng: e.lngLat.lng, lat: e.lngLat.lat }]);
+//       }
+//     };
+//     const wrappedClickHandler = attachUnifiedMapClick(map, handleClick);
+//     return () => { detachUnifiedMapClick(map, wrappedClickHandler); };
+//   }, [isMeasuring, measurePoints, setMeasurePoints, mapServiceRef]);
+
+//   useEffect(() => {
+//     if (!mapServiceRef.current) return;
+//     mapServiceRef.current.renderMeasurement(measurePoints);
+//   }, [mapServiceRef, measurePoints]);
+
+//   useEffect(() => {
+//     if (!isMeasuring || !mapServiceRef.current) {
+//       setTooltip(null);
+//       mapServiceRef.current?.clearMeasurement();
+//       return;
+//     }
+
+//     const map = (mapServiceRef.current as any).map;
+//     if (!map) return;
+
+//     if (measurePoints.length === 1) {
+//       const handleMove = (e: any) => {
+//         const mid = {
+//           lng: (measurePoints[0].lng + e.lngLat.lng) / 2,
+//           lat: (measurePoints[0].lat + e.lngLat.lat) / 2
+//         };
+//         const pixel = map.project([mid.lng, mid.lat]);
+//         const dist = calculateDistance(measurePoints[0], { lng: e.lngLat.lng, lat: e.lngLat.lat });
+//         setTooltip({ x: pixel.x, y: pixel.y, text: formatDistance(dist) });
+//         mapServiceRef.current?.renderMeasurementPreview(measurePoints[0], { lng: e.lngLat.lng, lat: e.lngLat.lat });
+//       };
+//       map.on("mousemove", handleMove);
+//       return () => {
+//         map.off("mousemove", handleMove);
+//         mapServiceRef.current?.clearMeasurementPreview();
+//         setTooltip(null);
+//       };
+//     }
+
+//     if (measurePoints.length === 2) {
+//       const mid = {
+//         lng: (measurePoints[0].lng + measurePoints[1].lng) / 2,
+//         lat: (measurePoints[0].lat + measurePoints[1].lat) / 2
+//       };
+//       const pixel = map.project([mid.lng, mid.lat]);
+//       const dist = calculateDistance(measurePoints[0], measurePoints[1]);
+//       setTooltip({ x: pixel.x, y: pixel.y, text: formatDistance(dist) });
+//       mapServiceRef.current?.clearMeasurementPreview();
+//     }
+//     if (measurePoints.length === 0) {
+//       setTooltip(null);
+//       mapServiceRef.current?.clearMeasurementPreview();
+//     }
+//   }, [isMeasuring, measurePoints, mapServiceRef]);
+
+//   useEffect(() => {
+//     if (!isMeasuring) {
+//       mapServiceRef.current?.clearMeasurement();
+//     }
+//   }, [isMeasuring, mapServiceRef]);
+
+//   return { tooltip };
+// };
+
+
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapService } from "../../../services/map/MapService";
 import { calculateCenter, calculateDistance, calculatePolygonArea, formatArea, formatDistance } from "../../../utils/geometry";
@@ -48,9 +147,6 @@ export const useMapMeasurement = ({
       mapServiceRef.current?.clearMeasurementPreview();
       mapServiceRef.current?.clearAreaMeasurementPreview();
       if (!isFinished) {
-        // המשתמש ביטל מדידה (לחיצה שנייה על הכפתור) – ננקה גם את הקו/הפוליגון ואת הטולטיפ
-        mapServiceRef.current?.clearMeasurement();
-        mapServiceRef.current?.clearAreaMeasurement();
         setTooltip(null);
       }
     }

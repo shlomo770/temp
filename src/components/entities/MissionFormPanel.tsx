@@ -54,7 +54,12 @@ const MissionFormPanel: FC<MissionFormPanelProps> = ({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-950/80 px-3 py-3">
-        <MissionDePanel {...panel} showFooter={false} />
+        <MissionDePanel
+          {...panel}
+          onSaveMissionServer={onSaveMissionServer}
+          onOpenMissionSaveCopy={onOpenMissionSaveCopy}
+          showFooter={false}
+        />
       </div>
 
       <footer className="flex shrink-0 justify-end gap-2 border-t border-zinc-700/55 bg-zinc-900/95 px-3 py-2.5 backdrop-blur-sm">

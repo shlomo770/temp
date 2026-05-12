@@ -23,13 +23,14 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
   const [isOpenBrightnes, setIsOpenBrightnes] = useState(false);
   const [isMapSelectorOpen, setIsMapSelectorOpen] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLosMode, setIsLosMode] = useState(false);
   const losMarkersRef = useRef<any[]>([]);
   const losPointsRef = useRef<{ lat: number, lng: number }[]>([]);
   const brightness = useAppSelector(state => state.map.brightness);
   const drawingMode = useAppSelector(state => state.entities.drawingMode);
   const isMeasuringDistance = drawingMode === 'measure';
-  const isMeasuringArea = drawingMode === 'measure-area';
+  // const isMeasuringArea = drawingMode === 'measure-area';
 
   useEffect(() => {
     if (!mapServiceRef?.current) return;
@@ -43,9 +44,7 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
       addTempMarker(map, lat, lng);
       if (losPointsRef.current.length === 2) {
         const [p1, p2] = losPointsRef.current;
-        sendMessage(WsMessageName.LosRequest, {
-          pointA: p1, pointB: p2
-        });
+
         losPointsRef.current = [];
         setTimeout(() => {
           clearTempMarkers();
@@ -103,14 +102,89 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
     setIsOpen(false);
   };
 
-  const handleAreaToggle = () => {
-    const newMode = isMeasuringArea ? null : 'measure-area';
-    dispatch(setDrawingMode(newMode));
-    setIsOpen(false);
-  };
+  // const handleAreaToggle = () => {
+  //   const newMode = isMeasuringArea ? null : 'measure-area';
+  //   dispatch(setDrawingMode(newMode));
+  //   setIsOpen(false);
+  // };
 
   const handleMapTypeToggle = () => {
     setIsMapSelectorOpen(!isMapSelectorOpen);
+  };
+
+  const handleJsonFilePick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const normalizePoints = (raw: any): Array<{ lng: number; lat: number; alt?: number }> => {
+    if (!Array.isArray(raw)) return [];
+    const points: Array<{ lng: number; lat: number; alt?: number }> = [];
+    raw.forEach((p) => {
+      if (Array.isArray(p) && p.length >= 2) {
+        const lng = Number(p[0]);
+        const lat = Number(p[1]);
+        const alt = p.length >= 3 ? Number(p[2]) : undefined;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        points.push({ lat, lng, alt: Number.isFinite(alt as number) ? (alt as number) : undefined });
+        return;
+      }
+      if (p && typeof p === "object") {
+        const lat = Number((p as any).lat ?? (p as any).latitude);
+        const lng = Number((p as any).lng ?? (p as any).lon ?? (p as any).longitude);
+        const alt = Number((p as any).alt ?? (p as any).altitude ?? (p as any).height);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        points.push({ lat, lng, alt: Number.isFinite(alt) ? alt : undefined });
+      }
+    });
+    return points;
+  };
+
+  const normalizePaths = (raw: any): Array<{ id?: string; name?: string; points: Array<{ lng: number; lat: number; alt?: number }> }> => {
+    if (Array.isArray(raw)) {
+      if (raw.length === 0) return [];
+      const first = raw[0];
+      const looksLikePathObject =
+        first && typeof first === "object" && (
+          Array.isArray(first.points) ||
+          Array.isArray(first.path) ||
+          Array.isArray(first.coordinates)
+        );
+      if (looksLikePathObject) {
+        const paths: Array<{ id?: string; name?: string; points: Array<{ lng: number; lat: number; alt?: number }> }> = [];
+        raw.forEach((p) => {
+          const pts = normalizePoints(p?.points ?? p?.path ?? p?.coordinates ?? []);
+          if (pts.length >= 2) {
+            paths.push({ id: p?.id, name: p?.name, points: pts });
+          }
+        });
+        return paths;
+      }
+      const points = normalizePoints(raw);
+      return points.length ? [{ points }] : [];
+    }
+    const fromObj = raw?.paths ?? raw?.routes ?? raw?.lines;
+    if (Array.isArray(fromObj)) return normalizePaths(fromObj);
+    const pts = normalizePoints(raw?.points ?? raw?.path ?? raw?.coordinates ?? []);
+    return pts.length ? [{ points: pts }] : [];
+  };
+
+  const handleJsonFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !mapServiceRef?.current) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const paths = normalizePaths(parsed);
+      if (paths.length === 0) {
+        console.warn("JSON must include at least one path with 2+ points.");
+        return;
+      }
+      mapServiceRef.current.renderJsonPaths(paths);
+    } catch (err) {
+      console.error("Failed to parse JSON path file:", err);
+    } finally {
+      e.target.value = "";
+    }
   };
 
   return (
@@ -122,6 +196,14 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
         title="Map Controls">
         <img src="./icons/Map_512.png" alt="" className='w-10' />
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={handleJsonFileChange}
+      />
+
       <FlyoutMenu
         anchorRef={buttonRef}
         isOpen={isOpenBrightnes}
@@ -143,7 +225,7 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
               value={brightness}
               onChange={(e) => handleBrightnessChange(Number(e.target.value))}
               onClick={(e) => e.stopPropagation()}
-              className="brightness appearance-none w-36 h-2 rounded-full cursor-pointer outline-none"
+              className="brightness appearance-none w-32 h-4 rounded-full cursor-pointer outline-none"
               style={{ background: `linear-gradient(to right, #2F67FF 0%, #2F67FF ${((brightness - 0) / (1 - 0)) * 100}%, #C9CDD3 ${((brightness - 0) / (1 - 0)) * 100}%, #C9CDD3 100%)` }} />
           </div>
         </div>
@@ -186,7 +268,7 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
               )}
             </div>
 
-            <div
+            {/* <div
               className={`flex flex-col items-center gap-1 p-1 rounded hover:bg-zinc-700 cursor-pointer transition-colors ${isMeasuringArea ? 'bg-zinc-600' : ''}`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -198,6 +280,18 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
               {isMeasuringArea && (
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
               )}
+            </div> */}
+            
+            <div
+              className="flex flex-col items-center gap-1 p-1 rounded hover:bg-zinc-700 cursor-pointer transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleJsonFilePick();
+                setIsOpen(false);
+              }}
+              title="Load JSON Path">
+              <img src="./icons/endpoints.png" alt="" className='w-8'  />
+              <span className="text-sm font-bold text-[#98a5db]  whitespace-pre-line ">LOS</span>
             </div>
 
             <div
@@ -205,7 +299,7 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
               onClick={(e) => { e.stopPropagation(); setIsLosMode(!isLosMode); losPointsRef.current = []; }}
               title="LOS Request">
               <img src="/icons/los.png" className="w-8 h-8" />
-              <span className="text-sm font-bold text-[#98a5db]  whitespace-pre-line ">LOS</span>
+              <span className="text-sm font-bold text-[#98a5db]  whitespace-pre-line ">כסוי</span>
             </div>
 
             <div className="relative">
@@ -225,11 +319,24 @@ const MapControls: React.FC<MapControlsProps> = ({ mapServiceRef }) => {
                 </div>
               )}
             </div>
+
+            {/* <div className="relative">
+              <div
+                ref={buttonTaboRef}
+                className="flex flex-col items-center gap-1 p-1 rounded hover:bg-zinc-700 cursor-pointer transition-colors"
+                onClick={(e) => { e.stopPropagation(); setIsOpenTabo(!isOpenTabo) }}
+                title="Tabo">
+                <TbMapStar size={25} className="text-white" />
+                <span className="text-sm font-bold text-[#98a5db]  whitespace-pre-line mt-2">TABZON</span>
+              </div>
+            </div> */}
           </div>
         </div>
       </FlyoutMenu>
+
+     
     </>
   );
 };
 
-export default React.memo(MapControls);
+export default MapControls; 

@@ -7,7 +7,6 @@ import {
   FaListUl,
 } from "react-icons/fa";
 import { MISSION_DE_TABS } from "../../../constants/entityCategories";
-import { MISSION_DE_FILTER_ALL } from "../../../enums/entityCategory.enum";
 import type { Entity } from "../../../store/slices/entitiesSlice";
 import type { DisplayFilter } from "./MissionDePanelTypes";
 import { btn, btnEmerald, btnRose, btnSky, inp, section, sel } from "./missionDePanelStyles";
@@ -95,7 +94,7 @@ const MissionDeSelectionSection: FC<MissionDeSelectionSectionProps> = ({
               value={displayFilter}
               onChange={(e) => onDisplayFilterChange(e.target.value as DisplayFilter)}
             >
-              <option value={MISSION_DE_FILTER_ALL}>הכל</option>
+              <option value="ALL">הכל</option>
               {MISSION_DE_TABS.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.label}

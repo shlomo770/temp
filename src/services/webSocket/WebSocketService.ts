@@ -1,12 +1,11 @@
 
 import { store } from '../../store/store';
 import { messageHandlers } from '../messageHandlers/MessageHandlers';
+import type { WSMessage, OutboundMessageMap, OutboundMessageName } from './wsTypes';
 import { unwrapVal } from '../../utils/unwrapVal';
-import {
-  appendInboundWsMessage,
-  WS_INBOUND_LOG_MESSAGE_NAME,
-} from '../../store/slices/wsInboundSlice';
 import { servers } from '../../config/communication.json'
+import { WsMessageName } from '../../enums/ws.enum';
+import { validateOutboundMessage } from './wsValidators';
 
 
 let instance: WebSocketService | null = null;
@@ -24,7 +23,7 @@ export class WebSocketService {
   private readonly reconnectMax = 15000;  // 15s
   private pingInterval: any;
   private readonly pingEveryMs = 30000;
-  private messageQueue: Array<{ headerName: string; data: any }> = [];
+  private messageQueue: Array<{ headerName: OutboundMessageName; data: any }> = [];
   private readonly MAX_QUEUE = 500;
 
   static getInstance(url: string = `ws://${servers.messagesServer}`) {
@@ -62,7 +61,7 @@ export class WebSocketService {
         }
       }, 5000);
 
-      this.ws.onopen = () => {      
+      this.ws.onopen = () => {
         clearTimeout(connectionTimeout);
         this.isConnecting = false;
         this.attempt = 0;
@@ -70,7 +69,7 @@ export class WebSocketService {
         this.flushMessageQueue();
         this.sendPing();
         this.startPingInterval();
-        this.emitConnection(true); 
+        this.emitConnection(true);
       };
 
       this.ws.onmessage = (event) => {
@@ -82,7 +81,7 @@ export class WebSocketService {
         }
       };
 
-      this.ws.onclose = (_event) => {
+      this.ws.onclose = () => {
         clearTimeout(connectionTimeout);
         this.isConnecting = false;
         if (!this.isDestroyed && this.shouldReconnect) this.scheduleReconnect();
@@ -115,29 +114,34 @@ export class WebSocketService {
 
   private handleMessage(raw: any) {
     if (!raw || typeof raw !== 'object') return;
-    const { header, data, type } = raw;
-    const name = (header && header.name) || type;
-    if (!name || typeof name !== 'string') return;
+    const { header, data } = raw;
+    if (!header || typeof header !== 'object' || !header.name) return;
 
-    const payload = data !== undefined ? data : raw;
-    const normalized = unwrapVal(payload);
+    const normalized = unwrapVal(data);
 
-    if (name === WS_INBOUND_LOG_MESSAGE_NAME) {
-      store.dispatch(appendInboundWsMessage({ name, payload: normalized }));
+    const name = header.name as WsMessageName;
+    if (!Object.values(WsMessageName).includes(name)) {
+      // console.warn('WS IN unknown message type:', header.name);
+      return;
     }
+    const handler = messageHandlers[name];
 
-    const handler = messageHandlers[name as keyof typeof messageHandlers];
-
-    // dlog('WS IN:', name, normalized);
+    // dlog('WS IN:', header.name, normalized);
 
     if (!handler) {
-      console.warn('No handler for message type:', name);
+      console.warn('No handler for message type:', header.name);
       return;
     }
     try {
-      handler(normalized as any, store);
+      const msg = { header, data: normalized } as WSMessage;
+      const result = handler(msg.data as any, store);
+      if (result && typeof (result as Promise<void>).then === "function") {
+        (result as Promise<void>).catch((e) => {
+          console.error('Async handler error for', header.name, e);
+        });
+      }
     } catch (e) {
-      console.error('Handler error for', name, e);
+      console.error('Handler error for', header.name, e);
     }
   }
 
@@ -148,7 +152,7 @@ export class WebSocketService {
     }
   }
 
-  private sendMessageInternal(headerName: string, data: any) {
+  private sendMessageInternal<T extends OutboundMessageName>(headerName: T, data: OutboundMessageMap[T]) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       const message = {
         header: { name: headerName },
@@ -160,7 +164,11 @@ export class WebSocketService {
     }
   }
 
- public sendMessage(headerName: string, data: any) {
+  public sendMessage<T extends OutboundMessageName>(headerName: T, data: OutboundMessageMap[T]) {
+    if (!validateOutboundMessage(headerName, data)) {
+      console.error("WS OUT invalid payload:", headerName, data);
+      return;
+    }
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendMessageInternal(headerName, data);
     } else {
@@ -171,7 +179,7 @@ export class WebSocketService {
 
   private sendPing() {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ header: { name: 'PING' }, data: { timestamp: Date.now() } }));
+      this.ws.send(JSON.stringify({ header: { name: WsMessageName.Ping }, data: { timestamp: Date.now() } }));
     }
   }
 
@@ -190,9 +198,28 @@ export class WebSocketService {
   public disconnect() {
     this.isDestroyed = true;
     this.shouldReconnect = false;
-    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
-    if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
-    if (this.ws) { this.ws.close(); this.ws = null; }
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+
+    this.connectionListeners.clear();
+    this.messageQueue = [];
+
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+
+    this.isConnecting = false;
+    this.emitConnection(false);
+
     instance = null;
   }
 

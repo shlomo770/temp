@@ -1,25 +1,26 @@
 import { useCallback } from "react";
 import { useWebSocket } from "./useWebSocket";
+import { WsMessageName } from "../enums/ws.enum";
 
 export const useTargetWebSocket = () => {
   const { sendMessage } = useWebSocket();
 
   const allocateTarget = useCallback((targetId: string) => {
-    sendMessage("ALLOCATE", {
+    sendMessage(WsMessageName.Allocate, {
       tgt_id: targetId,
       context: 0
     });
   }, [sendMessage]);
 
   const abortTarget = useCallback((targetId: string) => {
-    sendMessage("CANCEL_ENGAGEMENT", {
+    sendMessage(WsMessageName.CancelEngagement, {
       tgt_id: targetId,
       context: 0
     });
   }, [sendMessage]);
 
   const setTargetInfo = useCallback((targetId: string, identity: boolean) => {
-    sendMessage("SET_TARGET_INFO", {
+    sendMessage(WsMessageName.SetTargetInfo, {
       tgt_id: targetId,
       platform_override: false,
       platform: 0,

@@ -3,11 +3,14 @@ import { FaPlus, FaTrashAlt } from "react-icons/fa";
 import type { AppDispatch } from "../../../store/store";
 import type { Entity } from "../../../store/slices/entitiesSlice";
 import {
-  removeMissionMetadata,
   setActiveMissionName,
+  removeMissionMetadata,
 } from "../../../store/slices/entitiesSlice";
 import MissionFormPanel from "../MissionFormPanel";
-import type { EntityFormCategory } from "../../../enums/entityCategory.enum";
+import type { EntityCategoryEnum } from "../../../enums/entitis.enum";
+import { WsMessageName } from "../../../enums/ws.enum";
+import type { OutboundMessageMap, OutboundMessageName } from "../../../services/webSocket/wsTypes";
+import { swalConfirmDanger } from "../../../utils/swalDialog";
 
 export type EntitiesSidebarMissionsSectionProps = {
   onBackToRoot: () => void;
@@ -18,15 +21,15 @@ export type EntitiesSidebarMissionsSectionProps = {
   setMissionSearchQuery: (q: string) => void;
   localDraftMissionNamesRef: MutableRefObject<Set<string>>;
   createLocalMission: () => void;
-  sendMessage: (name: string, payload?: Record<string, unknown>) => void;
+  sendMessage: <T extends OutboundMessageName>(headerName: T, data: OutboundMessageMap[T]) => void;
   dispatch: AppDispatch;
   missionsByName: Record<string, { entityIds?: string[] } | undefined>;
   entitiesById: Record<string, Entity | undefined>;
   onMissionMemberIdsChange: (ids: string[]) => void;
   saveMissionToServer: (name: string, explicitIds?: string[]) => void;
   onOpenMissionSaveCopy: () => void;
-  handleMissionRename: (oldName: string, newName: string) => boolean;
-  onOpenCreatePanelWithCategory?: (category: EntityFormCategory) => void;
+  handleMissionRename: (oldName: string, newName: string) => boolean | Promise<boolean>;
+  onOpenCreatePanelWithCategory?: (category: any) => void;
   onOpenCreateMarkerPanel?: () => void;
   onCenterToEntity: (entity: Entity) => void;
 };
@@ -100,18 +103,17 @@ const EntitiesSidebarMissionsSection: FC<EntitiesSidebarMissionsSectionProps> = 
             filteredMissionNames.map((mName) => (
               <div
                 key={mName}
-                className={`group flex items-center justify-between gap-1.5 rounded-lg px-2 py-2 transition-colors ${
-                  activeMissionName === mName
-                    ? "border border-sky-500/40 bg-sky-600/25"
-                    : "bg-gray-800/60 hover:bg-gray-700/70"
-                }`}
+                className={`group flex items-center justify-between gap-1.5 rounded-lg px-2 py-2 transition-colors ${activeMissionName === mName
+                  ? "border border-sky-500/40 bg-sky-600/25"
+                  : "bg-gray-800/60 hover:bg-gray-700/70"
+                  }`}
               >
                 <button
                   type="button"
                   onClick={() => {
                     dispatch(setActiveMissionName(mName));
                     if (!localDraftMissionNamesRef.current.has(mName)) {
-                      sendMessage("LOAD_MISSION", { mission_name: mName });
+                      sendMessage(WsMessageName.LoadMission, { mission_name: mName });
                     }
                   }}
                   className="min-w-0 flex-1 truncate pl-1 text-right text-sm font-medium text-gray-100"
@@ -121,10 +123,15 @@ const EntitiesSidebarMissionsSection: FC<EntitiesSidebarMissionsSectionProps> = 
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    if (!window.confirm(`למחוק את המשימה "${mName}"?`)) return;
-                    sendMessage("DELETE_MISSION", { mission_name: mName });
+                    const ok = await swalConfirmDanger(`למחוק את המשימה "${mName}"?`, {
+                      title: "מחיקת משימה",
+                      confirmText: "מחק",
+                      cancelText: "ביטול",
+                    });
+                    if (!ok) return;
+                    sendMessage(WsMessageName.DeleteMission, { mission_name: mName });
                     dispatch(removeMissionMetadata(mName));
                   }}
                   className="shrink-0 rounded p-2 text-gray-400 hover:bg-red-900/20 hover:text-red-400"
@@ -161,7 +168,7 @@ const EntitiesSidebarMissionsSection: FC<EntitiesSidebarMissionsSectionProps> = 
         onMissionSwitch={(v) => {
           dispatch(setActiveMissionName(v));
           if (!localDraftMissionNamesRef.current.has(v)) {
-            sendMessage("LOAD_MISSION", { mission_name: v });
+            sendMessage(WsMessageName.LoadMission, { mission_name: v });
           }
         }}
         missionName={activeMissionName}

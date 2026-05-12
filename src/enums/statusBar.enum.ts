@@ -21,20 +21,20 @@ export enum GeneralStatusE {
 
 
 export enum RadarStatusE {
-    NO_COMM ,
-    FAIL ,
-    WARNING ,
+    NO_COMM,
+    FAIL,
+    WARNING,
     ACTIVE,
-    OK , 
+    OK,
 }
 
 
 export enum RadarStateE {
     OFF,
     INIT,
-    STANDBY ,
-    MAINTENANCE ,
-    OPERATE ,
+    STANDBY,
+    MAINTENANCE,
+    OPERATE,
 }
 
 export enum GunStatusE {
@@ -59,10 +59,11 @@ export enum FaultNormalE {
 
 export enum InsStatusE {
     NO_COMM,
-    FAIL,
+    STARTUP,
     ALIGN,
-    OK,
-    IGNORE_GPS
+    SURVEY,
+    ZUPT,
+    FAIL
 }
 
 export enum SystemModeE {

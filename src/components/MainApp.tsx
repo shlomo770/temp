@@ -6,10 +6,13 @@ import { useAppSelector } from '../hooks/useAppSelector';
 import { useTargetWebSocket } from '../hooks/useTargetWebSocket';
 import { TargetStatusService } from '../services/targets/TargetStatusService';
 import SidebarContainer from './sidebar/SidebarContainer';
-import { LaunchersBar } from './ammo/LaunchersBar';
-import { RightCommandsPanel } from './rightPanel';
-import { LogsPanel } from './logs/LogsPanel';
-import { getTerrainService } from '../terrain/terrain.service';
+import { TargetViewer } from './targets/TargetViewer';
+import { WebSocketService } from '../services/webSocket/WebSocketService';
+import { store } from '../store/store';
+import { WsMessageName } from '../enums/ws.enum';
+import { buildSaveEntityPayload, toEntityCategoryEnum } from '../services/webSocket/saveEntityMessage';
+import { buildSaveMissionEntitiesField } from '../services/webSocket/saveMissionPayload';
+
 
 const MainApp = () => {
   const [measurePoints, setMeasurePoints] = useState<{ lng: number; lat: number }[]>([]);
@@ -35,7 +38,6 @@ const MainApp = () => {
   const mapServiceRef = useRef<any>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTargetsPanelOpen, setIsTargetsPanelOpen] = useState(false);
-  const [isLogsOpen, setIsLogsOpen] = useState(false);
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", handleContextMenu);
@@ -64,14 +66,82 @@ const MainApp = () => {
   }, [setTargetInfo]);
 
   const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
-  const openLogsFromSidebar = useCallback(() => setIsLogsOpen(true), []);
   useEffect(() => {
-    getTerrainService().initTerrain().catch(() => {});
+    const ws = WebSocketService.getInstance();
+    const unsubscribe = ws.onConnectionChange((connected) => {
+      if (!connected) return;
+      const entities = Object.values(store.getState().entities.byId);
+      for (const entity of entities) {
+        if (!entity) continue;
+        if (entity.id.includes('temp')) {
+          const payload = buildSaveEntityPayload(entity.id, entity.category, entity.type as any, entity.coordinates ?? [], entity.name);
+          if (payload) {
+            payload.type = toEntityCategoryEnum(payload.type);
+            ws.sendMessage(WsMessageName.SaveEntity, payload);
+          }
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
+
+  useEffect(() => {
+    const ws = WebSocketService.getInstance();
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let lastSignature = "";
+
+    const emitMissionSaveIfNeeded = () => {
+      const state = store.getState().entities;
+      const missionName = String(state.activeMissionName ?? "").trim();
+
+      if (!missionName) return;
+
+      const ids = [...(state.missionsByName[missionName]?.entityIds ?? [])].sort((a, b) =>
+        a.localeCompare(b)
+      );
+
+      const signature = JSON.stringify({
+        missionName,
+        ids,
+      });
+
+      if (signature === lastSignature) return;
+
+      lastSignature = signature;
+
+      const payload = {
+        mission_name: missionName,
+        entities: buildSaveMissionEntitiesField(ids),
+      };
+
+      ws.sendMessage(WsMessageName.SaveMission, payload);
+    };
+
+    const unsubscribe = store.subscribe(() => {
+      if (timeoutId) clearTimeout(timeoutId);
+
+      timeoutId = setTimeout(() => {
+        emitMissionSaveIfNeeded();
+      }, 500);
+    });
+
+    return () => {
+      unsubscribe();
+
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+
 
   return (
     <ErrorBoundary>
       <div className="fixed inset-0 w-screen h-screen bg-white overflow-hidden">
+        <div style={{ position: 'fixed', top: '20px', left: '80px', zIndex: 9999, display: 'flex', alignItems: 'center' }}>
+        </div>
         <MapContainer
           isMeasuring={isMeasuring}
           measurementMode={drawingMode === 'measure' || drawingMode === 'measure-area' ? drawingMode : null}
@@ -93,23 +163,17 @@ const MainApp = () => {
         <SidebarContainer
           isOpen={isSidebarOpen}
           onClose={closeSidebar}
-          onOpenLogs={openLogsFromSidebar}
-          mapServiceRef={mapServiceRef}
-          clickedCoords={isSidebarOpen ? clickedCoords : null}
         />
-        <LaunchersBar />
-        <RightCommandsPanel
+        <TargetViewer
           mapServiceRef={mapServiceRef}
           onAttackTarget={handleAttackTarget}
           onAbortTarget={handleAbortTarget}
+          isOpen={true}
+          onToggle={() => setIsTargetsPanelOpen(!isTargetsPanelOpen)}
         />
-        <LogsPanel isOpen={isLogsOpen} onClose={() => setIsLogsOpen(false)} />
       </div>
     </ErrorBoundary>
   );
 }
 
 export default MainApp;
-
-
-

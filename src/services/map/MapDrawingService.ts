@@ -110,8 +110,11 @@ export class MapDrawingService {
       if (this.onEntityDrawn) {
         this.onEntityDrawn({
           type: this.activeType,
-          coordinates: this.getCleanPoints(),
+          coordinates: this.getFinalPoints(),
           properties: {},
+          name: undefined,
+          category: undefined,
+          geometry: undefined
         });
       }
       this.resetState();
@@ -119,7 +122,7 @@ export class MapDrawingService {
     }
 
     if (this.mode === "edit" && this.activeEntityId) {
-      const coords = this.getCleanPoints();
+      const coords = this.getFinalPoints();
       if (this.onEntityUpdated) {
         this.onEntityUpdated(this.activeEntityId, coords);
       }
@@ -271,6 +274,9 @@ export class MapDrawingService {
           type: "marker",
           coordinates: [point],
           properties: { iconChar: iconCode },
+          name: undefined,
+          category: undefined,
+          geometry: undefined
         });
       }
       this.resetState();
@@ -541,7 +547,6 @@ export class MapDrawingService {
 
   private clearOverlays() {
     this.unbindLayerHandlers();
-    // Remove all layers first, then sources. Some layers share same source.
     this.removeLayer(this.shapeFillLayerId);
     this.removeLayer(this.shapeLineLayerId);
     this.removeLayer(this.handleLayerId);
@@ -597,6 +602,27 @@ export class MapDrawingService {
       return this.points.slice(0, -1);
     }
     return this.points;
+  }
+
+  private getFinalPoints(): Coordinates[] {
+    const clean = this.getCleanPoints();
+
+    if (this.activeType !== "polygon") {
+      return clean;
+    }
+
+    if (clean.length < 3) {
+      return clean;
+    }
+
+    const first = clean[0];
+    const last = clean[clean.length - 1];
+
+    if (first.lng === last.lng && first.lat === last.lat) {
+      return clean;
+    }
+
+    return [...clean, { ...first }];
   }
 
   private updateUiState() {

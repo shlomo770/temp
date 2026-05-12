@@ -1,3 +1,5 @@
+
+
 import destination from "@turf/destination";
 import { point } from "@turf/helpers";
 import type { Position } from "geojson";
@@ -35,9 +37,6 @@ export function buildRadarSectors(
         const B = norm(b);
 
         if (A === B) continue;
-        // const A = norm(a);
-        // const B = norm(b);
-        // if (A === B) continue;
         if (A < B) segs.push([A, B]);
         else {
             segs.push([A, 360]);
@@ -70,7 +69,6 @@ export function buildRadarSectors(
     return { type: "FeatureCollection", features: polys };
 }
 
-/** Returns [center, startPoint, endPoint] for a sector entity from center (lng/lat), radius in meters, and two angles (0–360). */
 export function sectorCoordinatesFromAngles(
     center: { lng: number; lat: number },
     radiusMeters: number,

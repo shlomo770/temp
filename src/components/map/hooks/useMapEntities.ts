@@ -1,29 +1,27 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import { useAppDispatch } from "../../../hooks/useAppDispatch";
-import { useAppSelector } from "../../../hooks/useAppSelector";
 import { updateEntity } from "../../../store/slices/entitiesSlice";
 import { Coordinates } from "../../../types";
 import { Entity as StoreEntity } from "../../../store/slices/entitiesSlice";
 import { MapService } from "../../../services/map/MapService";
 import { buildGeometryForUpdate } from "../../../services/entities/EntityGeometryService";
-import { WebSocketService } from "../../../services/webSocket/WebSocketService";
 import { WsMessageName } from "../../../enums/ws.enum";
-import { buildUpdateEntityPayload } from "../../../services/webSocket/saveEntityMessage";
-import { selectDisplayedEntitiesOnMap } from "../../../store/selectors/entitiesSelectors";
+import { WebSocketService } from "../../../services/webSocket/WebSocketService";
+import { buildUpdateEntityPayload, toEntityCategoryEnum } from '../../../services/webSocket/saveEntityMessage';
+
+
 
 type UseMapEntitiesParams = {
   mapServiceRef: React.MutableRefObject<MapService | null>;
+  entitiesById: Record<string, StoreEntity>;
 };
 
-export const useMapEntities = ({ mapServiceRef }: UseMapEntitiesParams) => {
+export const useMapEntities = ({ mapServiceRef, entitiesById }: UseMapEntitiesParams) => {
   const dispatch = useAppDispatch();
-  const entitiesById = useAppSelector(selectDisplayedEntitiesOnMap);
-  const entitiesFullById = useAppSelector((s) => s.entities.byId);
   const prevEntityIds = useRef<Set<string>>(new Set());
   const prevEntitiesById = useRef<Record<string, StoreEntity>>({});
-  const updateTimeoutRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!mapServiceRef.current) return;
     const map = (mapServiceRef.current as any).map;
     if (!map) return;
@@ -70,21 +68,15 @@ export const useMapEntities = ({ mapServiceRef }: UseMapEntitiesParams) => {
       prevEntitiesById.current = { ...entitiesById };
     };
 
-    if (updateTimeoutRef.current) {
-      cancelAnimationFrame(updateTimeoutRef.current);
-    }
-    updateTimeoutRef.current = requestAnimationFrame(updateEntities);
+    updateEntities();
 
     return () => {
-      if (updateTimeoutRef.current) {
-        cancelAnimationFrame(updateTimeoutRef.current);
-      }
     };
   }, [entitiesById, mapServiceRef]);
 
   const handleEntityUpdated = useCallback(
     (id: string, coordinates: Coordinates[]) => {
-      const entity = entitiesFullById[id];
+      const entity = entitiesById[id];
       if (!entity) {
         return;
       }
@@ -98,12 +90,13 @@ export const useMapEntities = ({ mapServiceRef }: UseMapEntitiesParams) => {
         })
       );
 
-      const payload = buildUpdateEntityPayload(entity.id, entity.category, entity.type, coordinates);
+      const payload = buildUpdateEntityPayload(entity.id, entity.category, entity.type, coordinates, entity.name);
       if (payload) {
+        payload.type = toEntityCategoryEnum(payload.type);
         WebSocketService.getInstance().sendMessage(WsMessageName.UpdateEntity, payload);
       }
     },
-    [dispatch, entitiesFullById]
+    [dispatch, entitiesById]
   );
 
   const handleEntityDeleted = useCallback(() => {

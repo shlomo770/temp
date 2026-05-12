@@ -1,0 +1,39 @@
+<svg width="256" height="192" viewBox="0 0 256 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Military Vehicle Body -->
+  <rect x="40" y="80" width="176" height="80" rx="8" fill="#8B4513" stroke="#654321" stroke-width="2"/>
+  
+  <!-- Vehicle Cabin -->
+  <rect x="160" y="60" width="56" height="40" rx="4" fill="#654321" stroke="#3E2723" stroke-width="2"/>
+  
+  <!-- Windows -->
+  <rect x="164" y="64" width="48" height="32" rx="2" fill="#87CEEB" stroke="#4682B4" stroke-width="1"/>
+  
+  <!-- Wheels -->
+  <circle cx="80" cy="160" r="20" fill="#2F2F2F" stroke="#1A1A1A" stroke-width="2"/>
+  <circle cx="176" cy="160" r="20" fill="#2F2F2F" stroke="#1A1A1A" stroke-width="2"/>
+  <circle cx="80" cy="160" r="12" fill="#4A4A4A"/>
+  <circle cx="176" cy="160" r="12" fill="#4A4A4A"/>
+  
+  <!-- Weapon Mount -->
+  <rect x="120" y="40" width="16" height="40" fill="#696969" stroke="#4A4A4A" stroke-width="1"/>
+  <circle cx="128" cy="60" r="8" fill="#8B0000" stroke="#4A0000" stroke-width="1"/>
+  
+  <!-- Antenna -->
+  <line x1="180" y1="50" x2="180" y2="30" stroke="#696969" stroke-width="2"/>
+  <circle cx="180" cy="30" r="3" fill="#FFD700"/>
+  
+  <!-- Headlights -->
+  <circle cx="60" cy="100" r="6" fill="#FFFF00" stroke="#FF8C00" stroke-width="1"/>
+  <circle cx="60" cy="120" r="6" fill="#FFFF00" stroke="#FF8C00" stroke-width="1"/>
+  
+  <!-- Tail lights -->
+  <circle cx="196" cy="100" r="4" fill="#FF0000" stroke="#8B0000" stroke-width="1"/>
+  <circle cx="196" cy="120" r="4" fill="#FF0000" stroke="#8B0000" stroke-width="1"/>
+  
+  <!-- Military Camouflage Pattern -->
+  <path d="M50 90 Q70 85 90 90 Q110 95 130 90 Q150 85 170 90 Q190 95 210 90" stroke="#556B2F" stroke-width="3" fill="none"/>
+  <path d="M50 110 Q70 105 90 110 Q110 115 130 110 Q150 105 170 110 Q190 115 210 110" stroke="#556B2F" stroke-width="3" fill="none"/>
+  
+  <!-- Side Armor -->
+  <rect x="45" y="85" width="166" height="70" rx="6" fill="none" stroke="#556B2F" stroke-width="1" stroke-dasharray="5,5"/>
+</svg> 

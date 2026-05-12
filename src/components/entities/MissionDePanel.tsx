@@ -4,7 +4,6 @@ import { setPreviewEntityId } from "../../store/slices/entitiesSlice";
 import type { Entity } from "../../store/slices/entitiesSlice";
 import type { MissionDePanelProps, DisplayFilter } from "./missionDe/MissionDePanelTypes";
 export type { MissionDePanelProps, DisplayFilter } from "./missionDe/MissionDePanelTypes";
-import { EntityMissionTab, MISSION_DE_FILTER_ALL } from "../../enums/entityCategory.enum";
 import {
   buildMissionTreeBuckets,
   buildTableRows,
@@ -31,7 +30,7 @@ const MissionDePanel: FC<MissionDePanelProps> = ({
 }) => {
   const dispatch = useAppDispatch();
   const [selectionOpen, setSelectionOpen] = useState(false);
-  const [displayFilter, setDisplayFilter] = useState<DisplayFilter>(MISSION_DE_FILTER_ALL);
+  const [displayFilter, setDisplayFilter] = useState<DisplayFilter>("ALL");
   const [searchQ, setSearchQ] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [treeSelectedIds, setTreeSelectedIds] = useState<Set<string>>(new Set());
@@ -176,7 +175,7 @@ const MissionDePanel: FC<MissionDePanelProps> = ({
   const canRemove = [...selectedIds].some((id) => memberSet.has(id));
 
   const handleNewClick = useCallback(() => {
-    if (displayFilter === EntityMissionTab.MARKERS) {
+    if (displayFilter === "MARKERS") {
       onOpenCreateMarkerPanel?.();
       return;
     }
@@ -186,14 +185,14 @@ const MissionDePanel: FC<MissionDePanelProps> = ({
   const filterLabel = missionFilterLabel(displayFilter);
   const otherCount = missionTreeBuckets.OTHER?.length ?? 0;
 
-  const commitMissionRename = useCallback(() => {
+  const commitMissionRename = useCallback(async () => {
     const t = editMissionName.trim();
     if (!t) {
       setEditMissionName(missionName);
       return;
     }
     if (t === missionName) return;
-    const ok = onMissionRename(missionName, t);
+    const ok = await onMissionRename(missionName, t);
     if (!ok) setEditMissionName(missionName);
   }, [editMissionName, missionName, onMissionRename]);
 

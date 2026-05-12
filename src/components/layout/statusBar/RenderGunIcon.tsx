@@ -26,7 +26,7 @@ const RenderGunIcon: React.FC<RenderGunIconProps> = ({
                 fill={color}
                 stroke={color}
                 strokeWidth="2"
-                className="w-8 h-8">
+                className="w-6 h-6">
                 <g>
                     <g id="shape4-1" transform="translate(3,-3)">
                         <path
@@ -57,7 +57,7 @@ const RenderGunIcon: React.FC<RenderGunIconProps> = ({
 
             {status === GunStatusE.NO_COMM && (
                 <div className="absolute inset-0 flex items-center justify-center">
-                    <img src="./icons/swap_no_link_arrows_512.png" className="w-8 mt-[-8px]" alt="" />
+                    <img src="./icons/swap_no_link_arrows_512.png" className="w-6" alt="" />
                 </div>
             )}
         </div>

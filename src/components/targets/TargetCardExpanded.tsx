@@ -66,7 +66,9 @@ export function TargetCardExpanded({ target, onAction, onCenter, onAbort }: Targ
                       target.status === TargetStateString.designated ||
                       target.status === TargetStateString.arm
                       ? "border-2 border-red-600"
-                      : "border-0")
+                      : target.isRecommended
+                        ? "border-2 border-[#fff400] badge-pulse"
+                        : "border-0")
                   }
                 >
                   <img
@@ -83,10 +85,10 @@ export function TargetCardExpanded({ target, onAction, onCenter, onAbort }: Targ
                 <div className='flex '>
                   <div className="flex-1">
                     <div className="text-sm text-gray-400">
-                      Az {Math.floor(Number(target.heading ?? 0))} °
+                      Rng {target.range?.toString().slice(0, 4)} m
                     </div>
                     <div className="text-sm text-gray-400">
-                      {Number(target.speed ?? 0).toFixed(1)} kts
+                      Az {Math.floor(Number(target.heading?.toString().slice(0, 4)))} °
                     </div>
                   </div>
                   <div className="w-px h-10 ml-2 bg-[#9ca3af]" />
@@ -100,7 +102,7 @@ export function TargetCardExpanded({ target, onAction, onCenter, onAbort }: Targ
                   {target.speed} m
                 </div>
                 <div className="text-sm text-gray-400">
-                  {target.coordinates.alt} kts
+                  {target.coordinates.alt?.toString().slice(0, 4)} kts
                 </div>
               </div>
             </div>

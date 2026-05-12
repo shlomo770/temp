@@ -98,16 +98,14 @@ const TacticalCompassWidget = () => {
         turretAzimuth,
         targetBearing,
     } = useSelector(selectCompass);
-    const size = 180;
+    const size = 235;
     const cx = size / 2;
     const cy = size / 2;
-    const ringR = 45;
-    const wedgeOuter = 43;
-    const wedgeInner = 11;
-    const turretLen = 43;
-    const targetR = 43;
-    const tickSize = 9;
-    const labelOffset = 15;
+    const ringR = 60;
+    const wedgeOuter = 56;
+    const wedgeInner = 15;
+    const turretLen = 56;
+    const targetR = 56;
     const turretEnd = polarToXY(turretAzimuth, turretLen, cx, cy);
     const targetPos = polarToXY(targetBearing, targetR, cx, cy);
     const dotPts = useMemo(
@@ -115,21 +113,21 @@ const TacticalCompassWidget = () => {
         [cx, cy, turretEnd.x, turretEnd.y]
     );
     return (
-        <div className="fixed bottom-4 right-4 z-[9999] bg-[#1f2937d6] pointer-events-none rounded-full border border-white border-2">
+        <div className="fixed bottom-4 right-4 z-[9999] scale-75 bg-[#1f2937d6] pointer-events-none rounded-full border border-white border-2">
             <div className="">
                 <svg width={size} height={size} className="block">
                     <circle cx={cx} cy={cy} r={ringR} fill="none" stroke="white" strokeWidth={6} />
                     <g fill="white">
-                        <path d={`M ${cx} ${cy - ringR - tickSize} L ${cx - tickSize} ${cy - ringR + 0} L ${cx + tickSize} ${cy - ringR + 0} Z`} />
-                        <path d={`M ${cx + ringR + tickSize} ${cy} L ${cx + ringR - 0} ${cy - tickSize} L ${cx + ringR - 0} ${cy + tickSize} Z`} />
-                        <path d={`M ${cx} ${cy + ringR + tickSize} L ${cx - tickSize} ${cy + ringR - 0} L ${cx + tickSize} ${cy + ringR - 0} Z`} />
-                        <path d={`M ${cx - ringR - tickSize} ${cy} L ${cx - ringR + 0} ${cy - tickSize} L ${cx - ringR + 0} ${cy + tickSize} Z`} />
+                        <path d={`M ${cx} ${cy - ringR - 12} L ${cx - 12} ${cy - ringR + 0} L ${cx + 12} ${cy - ringR + 0} Z`} />
+                        <path d={`M ${cx + ringR + 12} ${cy} L ${cx + ringR - 0} ${cy - 12} L ${cx + ringR - 0} ${cy + 12} Z`} />
+                        <path d={`M ${cx} ${cy + ringR + 12} L ${cx - 12} ${cy + ringR - 0} L ${cx + 12} ${cy + ringR - 0} Z`} />
+                        <path d={`M ${cx - ringR - 12} ${cy} L ${cx - ringR + 0} ${cy - 12} L ${cx - ringR + 0} ${cy + 12} Z`} />
                     </g>
-                    <g fill="white" fontSize="11" fontFamily="ui-sans-serif, system-ui" fontWeight="600">
-                        <text x={cx} y={cy - ringR - labelOffset} textAnchor="middle">N</text>
-                        <text x={cx + ringR + labelOffset + 2} y={cy + 3} textAnchor="middle">E</text>
-                        <text x={cx} y={cy + ringR + labelOffset + 2} textAnchor="middle">S</text>
-                        <text x={cx - ringR - labelOffset - 2} y={cy + 3} textAnchor="middle">W</text>
+                    <g fill="white" fontSize="12" fontFamily="ui-sans-serif, system-ui" fontWeight="600">
+                        <text x={cx} y={cy - ringR - 18} textAnchor="middle">N</text>
+                        <text x={cx + ringR + 23} y={cy + 4} textAnchor="middle">E</text>
+                        <text x={cx} y={cy + ringR + 25} textAnchor="middle">S</text>
+                        <text x={cx - ringR - 23} y={cy + 4} textAnchor="middle">W</text>
                     </g>
                     {ranges.map(([from, to], i) => (
                         <path
@@ -148,11 +146,11 @@ const TacticalCompassWidget = () => {
                     </g>
                     <g transform={`translate(${cx}, ${cy}) rotate(${myPosition.heading})`}>
                         <image
-                            href="/icons/VehicleTopIcon.png" x={-17} y={-17} width={34} height={34} opacity={1} style={{ imageRendering: "auto" }} />
-                        <path d="M 0 -9 L -6 3 L 6 3 Z" fill="lightGray" opacity={0.95} transform="translate(0,-23)" />
+                            href="/icons/VehicleTopIcon.png" x={-20} y={-20} width={40} height={40} opacity={1} style={{ imageRendering: "auto" }} />
+                        <path d="M 0 -10 L -6 4 L 6 4 Z" fill="lightGray" opacity={0.95} transform="translate(0,-26)" />
                     </g>
                     <g fill="white" fontFamily="ui-sans-serif, system-ui" fontWeight="400" transform="translate(0,10)">
-                        <text x={cx} y={size - 10} textAnchor="middle" fontSize="15">
+                        <text x={cx} y={size - 18} textAnchor="middle" fontSize="20">
                             {Math.round(Number(myPosition.heading))}°
                         </text>
                     </g>

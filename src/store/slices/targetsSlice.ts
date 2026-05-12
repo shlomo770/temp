@@ -1,23 +1,24 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Coordinates } from '../../types';
 
-/** מטרה – רק שדות מהודעת TARGETS (Periodic) + שובל (נבנה ב-reducer). השרת שולח רק Velocity_North, Velocity_East, Velocity_Vup. */
 export interface Target {
   id: string;
   coordinates: Coordinates;
-  /** מחושב אצלנו מ-Velocity_North ו-Velocity_East (לא מגיע מהשרת) */
   heading?: number;
-  /** מחושב אצלנו מ-Velocity_North ו-Velocity_East (לא מגיע מהשרת) */
   speed?: number;
-  velocityVup?: number;
+  range?: number;
   type: string;
-  status: string;
+  friend?: boolean;
   lastUpdate?: number;
+  status: string;
   trail?: { lat: number; lng: number; timestamp: number }[];
-  timeTag?: number;
-  flightMode?: number;
-  ellipsisA?: number;
-  ellipsisC?: number;
+  isRecommended?: boolean;
+  isDestroyed?: boolean;
+  isAssigned?: boolean;
+  isLocked?: boolean;
+  lineLayerId?: string;
+  iconLayerId?: string;
+  risk_level?: number;
 }
 
 export interface TargetsState {
@@ -36,88 +37,70 @@ const targetsSlice = createSlice({
   reducers: {
     addTarget: (state, action: PayloadAction<Target>) => {
       const target = action.payload;
-      state.byId[target.id] = { ...target, trail: target.trail || [] };
-      if (!state.allIds.includes(target.id)) state.allIds.push(target.id);
+      const targetWithDefaults: Target = {
+        ...target,
+        status: target.status,
+        trail: target.trail || [],
+        isRecommended: target.isRecommended || false,
+        isAssigned: target.isAssigned || false,
+        isLocked: target.isLocked || false
+      };
+      state.byId[target.id] = targetWithDefaults;
+      if (!state.allIds.includes(target.id)) {
+        state.allIds.push(target.id);
+      }
     },
 
     updateTarget: (state, action: PayloadAction<Target>) => {
       const target = action.payload;
-      const now = Date.now();
+      const isAssigned = target.status === 'designated' ? true : false;
+      const isLocked = target.status === 'track' || target.status === 'arm' ? true : false;
+      const isAllocated = target.status === 'allocated' ? true : false;
+
       const newTrailPoint = {
         lat: target.coordinates.lat,
         lng: target.coordinates.lng,
-        timestamp: now
+        timestamp: Date.now()
       };
 
       if (state.byId[target.id]) {
         const existing = state.byId[target.id];
         const updatedTrail = [...(existing.trail || []), newTrailPoint];
-        const filteredTrail = updatedTrail.filter(p => p.timestamp >= now - 30000);
+        const thirtySecondsAgo = Date.now() - 30000;
+        const filteredTrail = updatedTrail.filter(p => p.timestamp >= thirtySecondsAgo);
+
         state.byId[target.id] = {
           ...existing,
-          ...target,
-          lastUpdate: now,
+          coordinates: target.coordinates,
+          heading: target.heading,
+          speed: target.speed,
+          range: target.range,
+          type: target.type,
+          friend: target.friend,
+          isRecommended: target.isRecommended,
+          status: target.status,
+          isAssigned,
+          isLocked,
+          lastUpdate: Date.now(),
           trail: filteredTrail,
+          risk_level: target.risk_level
         };
       } else {
         state.byId[target.id] = {
           ...target,
-          lastUpdate: now,
+          isAssigned,
+          isLocked,
           trail: [newTrailPoint],
+          lastUpdate: Date.now(),
+          risk_level: target.risk_level
         };
         if (!state.allIds.includes(target.id)) state.allIds.push(target.id);
       }
 
       state.allIds.sort((a, b) => {
-        const tA = state.byId[a]?.lastUpdate ?? 0;
-        const tB = state.byId[b]?.lastUpdate ?? 0;
-        return tB - tA;
-      });
-    },
-
-    /** הודעת TARGETS שלמה: כל העדכונים + מחיקות ריאון ב־dispatch אחד, מיון allIds פעם אחת */
-    applyTargetsFrame: (
-      state,
-      action: PayloadAction<{ updates: Target[]; removeIds: string[] }>
-    ) => {
-      const { updates, removeIds } = action.payload;
-      const now = Date.now();
-
-      for (const target of updates) {
-        const newTrailPoint = {
-          lat: target.coordinates.lat,
-          lng: target.coordinates.lng,
-          timestamp: now
-        };
-        if (state.byId[target.id]) {
-          const existing = state.byId[target.id];
-          const updatedTrail = [...(existing.trail || []), newTrailPoint];
-          const filteredTrail = updatedTrail.filter(p => p.timestamp >= now - 30000);
-          state.byId[target.id] = {
-            ...existing,
-            ...target,
-            lastUpdate: now,
-            trail: filteredTrail,
-          };
-        } else {
-          state.byId[target.id] = {
-            ...target,
-            lastUpdate: now,
-            trail: [newTrailPoint],
-          };
-          if (!state.allIds.includes(target.id)) state.allIds.push(target.id);
-        }
-      }
-
-      for (const id of removeIds) {
-        if (state.byId[id]) delete state.byId[id];
-      }
-      state.allIds = state.allIds.filter((id) => state.byId[id] != null);
-
-      state.allIds.sort((a, b) => {
-        const tA = state.byId[a]?.lastUpdate ?? 0;
-        const tB = state.byId[b]?.lastUpdate ?? 0;
-        return tB - tA;
+        const riskA = state.byId[a]?.risk_level || 0;
+        const riskB = state.byId[b]?.risk_level || 0;
+        return riskB - riskA;
       });
     },
 
@@ -128,6 +111,7 @@ const targetsSlice = createSlice({
         state.allIds = state.allIds.filter(x => x !== id);
       }
     },
+
 
     clearTargets: (state) => {
       state.byId = {};
@@ -144,25 +128,90 @@ const targetsSlice = createSlice({
       if (state.byId[id]) state.byId[id].trail = trail;
     },
 
+    setTargetRecommendation: (state, action: PayloadAction<{ id: string; isRecommended: boolean }>) => {
+      const { id, isRecommended } = action.payload;
+      if (state.byId[id]) state.byId[id].isRecommended = isRecommended;
+    },
+
+    clearAllRecommendations: (state) => {
+      Object.values(state.byId).forEach(t => { t.isRecommended = false; });
+    },
+
+    setTargetAssigned: (state, action: PayloadAction<{ id: string; assigned: boolean }>) => {
+      const { id, assigned } = action.payload;
+      if (state.byId[id]) state.byId[id].isAssigned = assigned;
+    },
+
+    setTargetLocked: (state, action: PayloadAction<{ id: string; locked: boolean }>) => {
+      const { id, locked } = action.payload;
+      if (state.byId[id]) state.byId[id].isLocked = locked;
+    },
+
+    clearTargetAssignment: (state, action: PayloadAction<string>) => {
+      const id = action.payload;
+      if (state.byId[id]) {
+        state.byId[id].isAssigned = false;
+        state.byId[id].isLocked = false;
+      }
+    },
+
+    setTargetLineLayer: (state, action: PayloadAction<{ id: string; lineLayerId: string }>) => {
+      const { id, lineLayerId } = action.payload;
+      if (state.byId[id]) state.byId[id].lineLayerId = lineLayerId;
+      if (state.byId[id]) state.byId[id].isAssigned = true;
+      if (state.byId[id]) state.byId[id].status = 'designated';
+      // if (state.byId[id]) state.byId[id].isRecommended = true;
+    },
+
+    setTargetIconLayer: (state, action: PayloadAction<{ id: string; iconLayerId: string }>) => {
+      const { id, iconLayerId } = action.payload;
+      if (state.byId[id]) state.byId[id].iconLayerId = iconLayerId;
+      if (state.byId[id]) state.byId[id].isLocked = true;
+      if (state.byId[id]) state.byId[id].status = 'designated';
+    },
+
+    clearTargetLayers: (state, action: PayloadAction<string>) => {
+
+      const id = action.payload;
+      if (state.byId[id]) {
+        state.byId[id].lineLayerId = undefined;
+        state.byId[id].iconLayerId = undefined;
+      }
+    },
+
+    markTargetAsDestroyed: (state, action: PayloadAction<string>) => {
+      const id = action.payload;
+      if (state.byId[id]) state.byId[id].isDestroyed = true;
+    },
+
     sortByType: (state) => {
       state.allIds.sort((a, b) => {
         const ta = state.byId[a]?.type ?? "";
         const tb = state.byId[b]?.type ?? "";
         return ta.localeCompare(tb);
-      });
-    },
+      })
+    }
   }
 });
 
 export const {
   addTarget,
   updateTarget,
-  applyTargetsFrame,
   removeTarget,
   clearTargets,
   markAsDisconnected,
   updateTrail,
+  setTargetRecommendation,
+  clearAllRecommendations,
+  setTargetAssigned,
+  setTargetLocked,
   sortByType,
+  clearTargetAssignment,
+  setTargetLineLayer,
+  setTargetIconLayer,
+  clearTargetLayers,
+  markTargetAsDestroyed
 } = targetsSlice.actions;
 
 export default targetsSlice.reducer;
+

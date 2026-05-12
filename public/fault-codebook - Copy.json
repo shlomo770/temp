@@ -1,0 +1,9 @@
+{
+    "radar": {
+      "1001": { "description": "אין קשר עם המכ\"מ", "severity": "CRITICAL", "masterCaution": true, "category": "COMM" },
+      "2005": { "description": "טמפרטורה גבוהה", "severity": "NON_CRITICAL", "masterCaution": false, "category": "TEMP" }
+    },
+    "gun": {
+      "3002": { "description": "מחסנית ריקה", "severity": "NON_CRITICAL", "masterCaution": false, "category": "AMMO" }
+    }
+  }

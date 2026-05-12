@@ -4,31 +4,24 @@ import {
   entityMatchesMissionDeTab,
 } from "../../../constants/entityCategories";
 import type { DisplayFilter } from "./MissionDePanelTypes";
-import {
-  EntityFormCategory,
-  EntityMissionTab,
-  MISSION_DE_FILTER_ALL,
-} from "../../../enums/entityCategory.enum";
+import { EntityCategoryEnum } from "../../../enums/entitis.enum";
 
-export function creationCategoryForFilter(f: DisplayFilter): EntityFormCategory {
-  if (f === MISSION_DE_FILTER_ALL || f === EntityMissionTab.MARKERS) {
-    return EntityFormCategory.FREE;
-  }
+export function creationCategoryForFilter(f: DisplayFilter): EntityCategoryEnum {
+  if (f === "ALL" || f === "MARKERS") return EntityCategoryEnum.FREE;
   switch (f) {
-    case EntityMissionTab.FREE:
-      return EntityFormCategory.FREE;
-    case EntityMissionTab.FIZ:
-      return EntityFormCategory.FIZ;
-    case EntityMissionTab.WCO_FREE:
-      return EntityFormCategory.WCO_FREE;
-    case EntityMissionTab.WCO_HOLD:
-      return EntityFormCategory.WCO_HOLD;
+    case "FREE":
+      return EntityCategoryEnum.FREE;
+    case "FIZ":
+      return EntityCategoryEnum.FIZ;
+    case "WCO_FREE":
+      return EntityCategoryEnum.WCO_FREE;
+    case "WCO_HOLD":
+      return EntityCategoryEnum.WCO_HOLD;
     default:
-      return EntityFormCategory.FREE;
+      return EntityCategoryEnum.FREE;
   }
 }
 
-/** ישויות במשימה — מקובצות לפי קטגוריית Mission (עץ) */
 export function buildMissionTreeBuckets(
   memberIds: string[],
   allById: Record<string, Entity>
@@ -64,7 +57,7 @@ export function buildTableRows(
   searchQ: string
 ): Entity[] {
   let list =
-    displayFilter === MISSION_DE_FILTER_ALL
+    displayFilter === "ALL"
       ? allEntities
       : allEntities.filter((e) => entityMatchesMissionDeTab(e, displayFilter));
   const q = searchQ.trim().toLowerCase();
@@ -86,7 +79,7 @@ export function buildTableRows(
 }
 
 export function missionFilterLabel(displayFilter: DisplayFilter): string {
-  if (displayFilter === MISSION_DE_FILTER_ALL) return "הכל";
+  if (displayFilter === "ALL") return "הכל";
   return (
     MISSION_DE_TABS.find((t) => t.id === displayFilter)?.label ?? displayFilter
   );

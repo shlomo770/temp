@@ -4,8 +4,8 @@ import { useAppDispatch } from "../../hooks/useAppDispatch";
 import { useAppSelector } from "../../hooks/useAppSelector";
 import { setCreationForm, setDrawingMode, setSelectedMarkerIcon } from "../../store/slices/entitiesSlice";
 import { setMode } from "../../store/slices/drawSlice";
-import { MARKER_ICONS, getMarkerIconChar } from "../../constants/markerIcons";
-import { EntityFormCategory } from "../../enums/entityCategory.enum";
+import { MARKER_ICONS, getMarkerIconChar } from "../../constants/MarkerIcons";
+import { EntityCategoryEnum } from "../../enums/entitis.enum";
 
 interface EntityMarkerCreationPanelProps {
   isOpen: boolean;
@@ -19,7 +19,7 @@ const EntityMarkerCreationPanel: FC<EntityMarkerCreationPanelProps> = ({ isOpen,
   const selectedIcon = useAppSelector((s) => s.entities.selectedMarkerIcon);
 
   const handleClose = () => {
-    dispatch(setCreationForm({ name: "", category: EntityFormCategory.FREE, height: 0 }));
+    dispatch(setCreationForm({ name: "", category: EntityCategoryEnum.FREE, height: 0 }));
     dispatch(setSelectedMarkerIcon(null));
     onClose();
   };
@@ -30,8 +30,8 @@ const EntityMarkerCreationPanel: FC<EntityMarkerCreationPanelProps> = ({ isOpen,
 
   const handleStartDrawing = () => {
     if (!selectedIcon) return;
-    const name = creationName?.trim() || "Point";
-    dispatch(setCreationForm({ name, category: EntityFormCategory.FREE, height: creationHeight }));
+    const name = creationName?.trim() || "נקודה";
+    dispatch(setCreationForm({ name, category: EntityCategoryEnum.FREE, height: creationHeight }));
     dispatch(setDrawingMode("marker"));
     dispatch(setMode("marker" as any));
     onClose();
@@ -65,7 +65,7 @@ const EntityMarkerCreationPanel: FC<EntityMarkerCreationPanelProps> = ({ isOpen,
             value={creationName}
             onChange={(e) =>
               dispatch(
-                setCreationForm({ name: e.target.value, category: EntityFormCategory.FREE, height: creationHeight })
+                setCreationForm({ name: e.target.value, category: EntityCategoryEnum.FREE, height: creationHeight })
               )
             }
             placeholder="שם הנקודה…"

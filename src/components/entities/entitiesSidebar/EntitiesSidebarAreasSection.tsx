@@ -14,16 +14,19 @@ import {
   EntityTypeGlyph,
   getEntityTypeLabel,
 } from "./entityDisplay";
-import { isTaboozoneEntity } from "./entitiesSidebarUtils";
-import type { EntityFormCategory } from "../../../enums/entityCategory.enum";
+import { isTabbozonEntity } from "./entitiesSidebarUtils";
+import type { OutboundMessageMap, OutboundMessageName } from "../../../services/webSocket/wsTypes";
+import { WsMessageName } from "../../../enums/ws.enum";
+import { toEntityCategoryEnum } from "../../../services/webSocket/saveEntityMessage";
+import { swalConfirmDanger, swalInfo } from "../../../utils/swalDialog";
 
 export type EntitiesSidebarAreasSectionProps = {
   onBack: () => void;
   areaSearchQuery: string;
   setAreaSearchQuery: (q: string) => void;
-  filteredAreaByCategory: Partial<Record<EntityFormCategory, Record<string, Entity[]>>>;
-  openAreaCategory: EntityFormCategory | null;
-  setOpenAreaCategory: (v: EntityFormCategory | null) => void;
+  filteredAreaByCategory: Record<string, Record<string, Entity[]>>;
+  openAreaCategory: string | null;
+  setOpenAreaCategory: (v: string | null) => void;
   openAreaTypeKey: string | null;
   setOpenAreaTypeKey: (v: string | null) => void;
   editingEntityId?: string | null;
@@ -31,9 +34,9 @@ export type EntitiesSidebarAreasSectionProps = {
   activeMissionName: string | null;
   mapServiceRef?: MutableRefObject<any>;
   dispatch: AppDispatch;
-  sendMessage: (name: string, payload?: Record<string, unknown>) => void;
+  sendMessage: <T extends OutboundMessageName>(headerName: T, data: OutboundMessageMap[T]) => void;
   setGroupVisibility: (list: Entity[], visible: boolean) => void;
-  deleteGroup: (list: Entity[], label: string) => void;
+  deleteGroup: (list: Entity[], label: string) => void | Promise<void>;
   onEditEntity: (entity: Entity) => void;
   onCenterToEntity: (entity: Entity) => void;
   onOpenCreatePanel?: () => void;
@@ -65,7 +68,7 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
   openDuplicatePanel,
 }) => {
   const handleEntityClick = (entity: Entity) => {
-    if (entity.type === "marker" || isTaboozoneEntity(entity)) {
+    if (entity.type === "marker" || isTabbozonEntity(entity)) {
       dispatch(setSelectedEntity(entity.id));
       return;
     }
@@ -73,14 +76,19 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
     onEditEntity(entity);
   };
 
-  const handleDeleteEntity = (e: React.MouseEvent, entity: Entity) => {
+  const handleDeleteEntity = async (e: React.MouseEvent, entity: Entity) => {
     e.stopPropagation();
     if (editingEntityId === entity.id) {
-      alert("לא ניתן למחוק ישות שנמצאת כרגע בעריכה.");
+      await swalInfo("לא ניתן למחוק ישות שנמצאת כרגע בעריכה.", "לא ניתן למחוק");
       return;
     }
-    if (!window.confirm(`למחוק את "${entity.name}"?`)) return;
-    sendMessage("ENTITY_DELETED", { entityId: entity.id });
+    const ok = await swalConfirmDanger(`למחוק את "${entity.name}"?`, {
+      title: "מחיקת ישות",
+      confirmText: "מחק",
+      cancelText: "ביטול",
+    });
+    if (!ok) return;
+    sendMessage(WsMessageName.EntityDeleted, { id: entity.id, type: toEntityCategoryEnum(entity.type) });
     dispatch(removeEntity(entity.id));
     if (mapServiceRef?.current) mapServiceRef.current.removeEntityFromMap?.(entity.id);
     if (selectedEntityId === entity.id) dispatch(setSelectedEntity(null));
@@ -121,8 +129,7 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
         className="mb-2 w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-white placeholder-gray-400 focus:border-sky-500 focus:outline-none"
       />
       <div className="space-y-2">
-        {(Object.entries(filteredAreaByCategory) as [EntityFormCategory, Record<string, Entity[]>][]).map(
-          ([cat, types]) => {
+        {Object.entries(filteredAreaByCategory).map(([cat, types]) => {
           const catList = Object.values(types).flat();
           const catCount = catList.length;
           const isCatOpen = openAreaCategory === cat;
@@ -167,11 +174,10 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
                     deleteGroup(catList, `קטגוריה ${cat}`);
                   }}
                   disabled={hasEditingInCategory}
-                  className={`rounded p-2 ${
-                    hasEditingInCategory
-                      ? "cursor-not-allowed text-gray-600"
-                      : "text-gray-400 hover:bg-red-900/20 hover:text-red-400"
-                  }`}
+                  className={`rounded p-2 ${hasEditingInCategory
+                    ? "cursor-not-allowed text-gray-600"
+                    : "text-gray-400 hover:bg-red-900/20 hover:text-red-400"
+                    }`}
                   title={
                     hasEditingInCategory
                       ? "לא ניתן למחוק קטגוריה כשישות בתוכה בעריכה"
@@ -229,11 +235,10 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
                               deleteGroup(list, `סוג ${typeLabel}`);
                             }}
                             disabled={hasEditingInType}
-                            className={`rounded p-1.5 ${
-                              hasEditingInType
-                                ? "cursor-not-allowed text-gray-600"
-                                : "text-gray-400 hover:bg-red-900/20 hover:text-red-400"
-                            }`}
+                            className={`rounded p-1.5 ${hasEditingInType
+                              ? "cursor-not-allowed text-gray-600"
+                              : "text-gray-400 hover:bg-red-900/20 hover:text-red-400"
+                              }`}
                             title={
                               hasEditingInType
                                 ? "לא ניתן למחוק סוג כשישות בתוכו בעריכה"
@@ -260,19 +265,17 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
                                     if (activeMissionName) dispatch(setPreviewEntityId(entity.id));
                                   }}
                                   onClick={() => handleEntityClick(entity)}
-                                  className={`group flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-all ${
-                                    isSelected
-                                      ? "border-sky-500/50 bg-sky-600/30 text-white"
-                                      : "border-transparent bg-gray-700/40 text-gray-200 hover:bg-gray-600/50"
-                                  } ${!entity.visible ? "opacity-60" : ""}`}
+                                  className={`group flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-all ${isSelected
+                                    ? "border-sky-500/50 bg-sky-600/30 text-white"
+                                    : "border-transparent bg-gray-700/40 text-gray-200 hover:bg-gray-600/50"
+                                    } ${!entity.visible ? "opacity-60" : ""}`}
                                 >
                                   <div className="min-w-0 flex-1">
                                     <div className="truncate text-sm font-medium">{entity.name}</div>
                                   </div>
                                   <div
-                                    className={`flex items-center gap-0.5 transition-opacity ${
-                                      isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                                    }`}
+                                    className={`flex items-center gap-0.5 transition-opacity ${isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                      }`}
                                   >
                                     <button
                                       type="button"
@@ -291,11 +294,10 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
                                         e.stopPropagation();
                                         applyVisibility(entity, !entity.visible);
                                       }}
-                                      className={`rounded p-1.5 ${
-                                        entity.visible
-                                          ? "text-green-400 hover:bg-green-900/30"
-                                          : "text-red-400 hover:bg-red-900/30"
-                                      }`}
+                                      className={`rounded p-1.5 ${entity.visible
+                                        ? "text-green-400 hover:bg-green-900/30"
+                                        : "text-red-400 hover:bg-red-900/30"
+                                        }`}
                                       title={entity.visible ? "הסתר" : "הצג"}
                                     >
                                       {entity.visible ? (
@@ -308,11 +310,10 @@ const EntitiesSidebarAreasSection: FC<EntitiesSidebarAreasSectionProps> = ({
                                       type="button"
                                       onClick={(e) => handleDeleteEntity(e, entity)}
                                       disabled={editingEntityId === entity.id}
-                                      className={`rounded p-1.5 ${
-                                        editingEntityId === entity.id
-                                          ? "cursor-not-allowed text-gray-600"
-                                          : "text-gray-400 hover:bg-red-900/30 hover:text-red-400"
-                                      }`}
+                                      className={`rounded p-1.5 ${editingEntityId === entity.id
+                                        ? "cursor-not-allowed text-gray-600"
+                                        : "text-gray-400 hover:bg-red-900/30 hover:text-red-400"
+                                        }`}
                                       title={
                                         editingEntityId === entity.id
                                           ? "לא ניתן למחוק ישות שנמצאת בעריכה"

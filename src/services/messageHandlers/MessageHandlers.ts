@@ -1,34 +1,35 @@
 import { Store } from 'redux';
-import { isValidLatLng } from '../../utils/validation';
+import { isValidLatLng } from '../../utils';
 import {
   addEntity,
-  removeEntity,
   confirmEntityCreated,
+  removeEntity,
   setMissionList,
   setActiveMissionName,
   upsertMissionName,
   setMissionEntityIds,
 } from '../../store/slices/entitiesSlice';
-import { setMyPosition } from '../../store/slices/myPositionSlice';
-import { setTmapsParams, type TmapsParamsState } from '../../store/slices/tmapsParamsSlice';
-import type { Coordinates } from '../../types';
-import { applyTargetsFrame, type Target } from '../../store/slices/targetsSlice';
+import { setMyPosition, updateGunAzimut, updateMyCali } from '../../store/slices/myPositionSlice';
+import { updateTarget, setTargetRecommendation, setTargetLineLayer, setTargetIconLayer, markTargetAsDestroyed, removeTarget } from '../../store/slices/targetsSlice';
 import { setLOS } from '../../store/slices/losSlice';
-import { updateServerValues, setStatus, setRadarNonCoverage, updateParamsValues } from '../../store/slices/radarSlice';
-import { setGunStatus, setMissileHealth } from '../../store/slices/gunSlice';
+import { receiveRadarParamsFromServer, setStatus, setRadarNonCoverage } from '../../store/slices/radarSlice';
+import { mapRadarWireStateToStatus, normalizeInboundRadarParamsWire } from '../../store/slices/radarParamsWire';
+import { setGunStatus } from '../../store/slices/gunSlice';
+import { TargetState, TargetType } from '../../enums/target.enum';
 import { setCategorySnapshot } from "../../store/slices/faultsSlice";
 import { showPrompt } from "../../store/slices/confirmSlice";
 import { mapPayloadToSnapshot } from "../../faults/faultsMapping";
 import { setInsStatus } from '../../store/slices/insSlice';
-import { upsertMissile } from '../../store/slices/missilesSlice';
-import { appendLog } from '../../store/slices/logsSlice';
-import { TARGET_CLASSIFICATION_TO_TYPE } from '../../types/targets';
-import { ErrorSeverityE, ErrorStateE } from "../../enums/general.enum";
-import { InsStatusE, GunStatusE } from "../../enums/statusBar.enum";
-import { normalizeRawEntityToStore } from '../entities/serverEntityNormalize';
+import { WsMessageName } from "../../enums/ws.enum";
+import { normalizeRawEntityToStore } from '../entities/serverEntityNormailize';
+import type { MessageMap } from '../webSocket/wsTypes';
+import { CaliModeE } from '../../enums/general.enum';
+import { appendInboundWsMessage } from '../../store/slices/wsInboundSlice';
+import { ingestGetDbTypedPayload, isTypedGetDbPayload } from './getDbSpecNormalize';
+
 
 export interface MessageHandler {
-  (data: any, store: Store): void;
+  (data: any, store: Store): void | Promise<void>;
 }
 
 const __TARGETS_RT = {
@@ -36,25 +37,51 @@ const __TARGETS_RT = {
   seenAt: {} as Record<string, number>,
   stamp: 0,
   cleanupStarted: false,
-  lastReconcileAt: 0,
+  cleanupInterval: null as ReturnType<typeof setInterval> | null
 };
 
-/** נרמול רשימת משימות מהשרת + שמירה על המשימה הפעילה ברשימה גם אם השרת עדיין לא החזיר אותה */
-function applyMissionsListPayload(data: any, store: Store) {
-  if (!data) return;
+/** שמות משימות ממערך מהשרת (מחרוזות או אובייקטים עם name / mission_name) */
+function parseMissionNamesFromServerArray(raw: unknown[]): string[] {
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x === 'string') {
+      const t = x.trim();
+      if (t) out.push(t);
+      continue;
+    }
+    if (x && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      const n = String(o.name ?? o.mission_name ?? '').trim();
+      if (n) out.push(n);
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** נרמול רשימת משימות מהשרת + שמירה על המשימה הפעילה ועל משימות שכבר נטענו (למשל מ־GET_DB) */
+function applyMissionsListPayload(data: unknown, store: Store) {
+  if (data == null) return;
   let raw: unknown[] = [];
   if (Array.isArray(data)) {
     raw = data;
-  } else if (data && typeof data === 'object') {
+  } else if (typeof data === 'object') {
     const d = data as Record<string, unknown>;
     if (Array.isArray(d.missions)) raw = d.missions as unknown[];
     else if (Array.isArray(d.list)) raw = d.list as unknown[];
     else raw = Object.values(d);
   }
-  let list = raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
-  const active = store.getState().entities.activeMissionName;
-  if (active && !list.includes(active)) {
-    list = [...list, active];
+  const fromServer = parseMissionNamesFromServerArray(raw);
+  const state = store.getState().entities;
+  const active = state.activeMissionName;
+  const prev = state.missionsList;
+
+  let list: string[];
+  if (fromServer.length === 0) {
+    list = prev.length ? [...prev] : [];
+    if (active && !list.includes(active)) list = [...list, active];
+  } else {
+    list = [...new Set([...fromServer, ...prev])];
+    if (active && !list.includes(active)) list = [...list, active];
   }
   list.sort((a, b) => a.localeCompare(b, 'he'));
   store.dispatch(setMissionList(list));
@@ -76,56 +103,83 @@ function parseMissionEntitiesField(entitiesField: unknown): unknown[] {
   return [];
 }
 
+
+function pickExplicitMissionEntityIdList(payload: Record<string, unknown>): string[] | null {
+  const keys = [
+    "entityIds",
+    "entity_ids",
+    "ids",
+    "mission_entity_ids",
+    "member_ids",
+    "entities_ids",
+  ];
+  for (const k of keys) {
+    const v = payload[k];
+    if (!Array.isArray(v) || v.length === 0) continue;
+    const out = v.map((x) => String(x).trim()).filter(Boolean);
+    if (out.length) return [...new Set(out)];
+  }
+  return null;
+}
+
 function applyMissionDataPayload(data: any, store: Store) {
   if (!data) return;
-  const entitiesArray = parseMissionEntitiesField(data.entities);
+  const d = data as Record<string, unknown>;
+  const entitiesArray = parseMissionEntitiesField(d.entities);
   const mn =
-    typeof data.mission_name === 'string' && data.mission_name.trim()
-      ? data.mission_name.trim()
+    typeof d.mission_name === "string" && d.mission_name.trim()
+      ? String(d.mission_name).trim()
       : null;
   if (!mn) return;
 
-  const ids: string[] = [];
+  const inferredIds: string[] = [];
   for (const raw of entitiesArray) {
     const entity = normalizeRawEntityToStore(raw);
     if (!entity?.id) continue;
     store.dispatch(addEntity(entity));
-    ids.push(entity.id);
+    inferredIds.push(entity.id);
   }
-  store.dispatch(setMissionEntityIds({ missionName: mn, entityIds: ids }));
+
+  const explicitIds = pickExplicitMissionEntityIdList(d);
+  const entityIds = explicitIds?.length ? explicitIds : inferredIds;
+
+  store.dispatch(setMissionEntityIds({ missionName: mn, entityIds }));
   store.dispatch(setActiveMissionName(mn));
   store.dispatch(upsertMissionName(mn));
 }
 
-/** תומך בגוף ישיר או עטוף (payload / result / data וכו׳) */
 function unwrapGetDbPayload(data: unknown): Record<string, unknown> | null {
   if (!data || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;
-  const hasTop =
-    Array.isArray(d.entities as unknown[]) ||
-    Array.isArray(d.Entities as unknown[]) ||
-    Array.isArray(d.missions as unknown[]) ||
-    Array.isArray(d.Missions as unknown[]);
-  if (hasTop) return d;
-
   const nested =
     d.data ?? d.payload ?? d.result ?? d.body ?? d.db ?? d.GET_DB ?? d.content ?? d.response;
-  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-    const n = nested as Record<string, unknown>;
-    const hasNested =
-      Array.isArray(n.entities as unknown[]) ||
-      Array.isArray(n.Entities as unknown[]) ||
-      Array.isArray(n.missions as unknown[]) ||
-      Array.isArray(n.Missions as unknown[]);
-    if (hasNested) return n;
-  }
+  const inner =
+    nested && typeof nested === 'object' && !Array.isArray(nested)
+      ? (nested as Record<string, unknown>)
+      : null;
+
+  if (inner && isTypedGetDbPayload(inner)) return inner;
+  if (isTypedGetDbPayload(d)) return d;
+
+  const hasLegacy = (o: Record<string, unknown>) =>
+    Array.isArray(o.entities as unknown[]) ||
+    Array.isArray(o.Entities as unknown[]) ||
+    Array.isArray(o.missions as unknown[]) ||
+    Array.isArray(o.Missions as unknown[]);
+
+  if (hasLegacy(d)) return d;
+  if (inner && hasLegacy(inner)) return inner;
   return d;
 }
 
-function applyGetDbPayload(data: any, store: Store) {
+function applyGetDbPayload(data: unknown, store: Store) {
   const unwrapped = unwrapGetDbPayload(data);
   if (!unwrapped) return;
   const d = unwrapped;
+  if (isTypedGetDbPayload(d)) {
+    ingestGetDbTypedPayload(store, d);
+    return;
+  }
   const rawEntities = d.entities ?? d.Entities;
   const rawMissions = d.missions ?? d.Missions;
 
@@ -151,7 +205,13 @@ function applyGetDbPayload(data: any, store: Store) {
         const name = String(o.name ?? o.mission_name ?? '').trim();
         if (!name) continue;
         names.push(name);
-        const idsRaw = o.entityIds ?? o.entity_ids ?? o.ids;
+        const idsRaw =
+          o.entityIds ??
+          o.entity_ids ??
+          o.ids ??
+          o.member_ids ??
+          o.mission_entity_ids ??
+          o.entities_ids;
         const entityIds = Array.isArray(idsRaw)
           ? idsRaw.map((x) => String(x)).filter(Boolean)
           : [];
@@ -164,160 +224,43 @@ function applyGetDbPayload(data: any, store: Store) {
   }
 }
 
+
 const TARGETS_UPDATE_THROTTLE_MS = 50;
 const TARGETS_CLEANUP_MS = 5000;
 const TARGETS_RECONCILE_GRACE = 2;
-const TARGETS_RECONCILE_EVERY_MS = 350;
 
-function parseTargetFromTARGETS(t: any) {
-  if (t?.WCS_Target_Number == null && t?.latitude == null && t?.Latitude == null) return null;
-  const lat = Number(t.Latitude ?? t.latitude);
-  const lng = Number(t.Longitude ?? t.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  const id = String(t.WCS_Target_Number ?? 'unknown');
-  const alt = Number.isFinite(Number(t.Altitude ?? t.altitude)) ? Number(t.Altitude ?? t.altitude) : undefined;
-  const vn = Number(t.Velocity_North) || 0;
-  const ve = Number(t.Velocity_East) || 0;
-  const vup = Number(t.Velocity_Vup);
-  const speedMs = Math.sqrt(vn * vn + ve * ve);
-  const speedKts = speedMs * 1.943844;
-  const headingRad = Math.atan2(ve, vn);
-  const headingDeg = ((headingRad * 180) / Math.PI + 360) % 360;
-  const classification = Number(t.Target_Classification);
-  const type = TARGET_CLASSIFICATION_TO_TYPE[classification] ?? 'unknown';
-  return {
-    id,
-    coordinates: { lat, lng, alt },
-    heading: headingDeg,
-    speed: speedKts,
-    type,
-    status: 'active',
-    velocityVup: Number.isFinite(vup) ? vup : undefined,
-    timeTag: Number.isFinite(Number(t.Time_Tag)) ? Number(t.Time_Tag) : undefined,
-    flightMode: Number.isFinite(Number(t.Flight_Mode)) ? Number(t.Flight_Mode) : undefined,
-    ellipsisA: Number.isFinite(Number(t.Ellipsis_A)) ? Number(t.Ellipsis_A) : undefined,
-    ellipsisC: Number.isFinite(Number(t.Ellipsis_C)) ? Number(t.Ellipsis_C) : undefined,
-  };
-}
+export const messageHandlers: Partial<Record<WsMessageName, MessageHandler>> = {
 
-/** נקודת lat/lng/alt מהשרת (gps / tmaps / manual) */
-function parseLLA(p: unknown): Coordinates | null {
-  if (!p || typeof p !== 'object') return null;
-  const o = p as Record<string, unknown>;
-  const lat = Number(o.lat);
-  const lng = Number(o.lng);
-  if (!isValidLatLng({ lat, lng })) return null;
-  const altRaw = Number(o.alt);
-  const alt = Number.isFinite(altRaw) ? altRaw : 0;
-  return { lat, lng, alt };
-}
+  [WsMessageName.EntityDeleted]: (data, store) => {
+    const raw = data ?? {};
+    const entityId =
+      (typeof (raw as { entityId?: unknown }).entityId === 'string' && (raw as { entityId: string }).entityId) ||
+      (typeof (raw as { id?: unknown }).id === 'string' && (raw as { id: string }).id) ||
+      null;
+    if (!entityId) return;
+    store.dispatch(removeEntity(entityId));
+  },
 
-/**
- * נרמול LOS מינימלי: כרגע השרת שולח רק אזימוט.
- */
-function parseLosFromPayload(payload: unknown): number | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const p = payload as Record<string, unknown>;
-  const src = (p.los && typeof p.los === "object" ? p.los : p) as Record<string, unknown>;
-  const keys = [
-    "gunAzimut",
-    "gun_azimut",
-    "gunAzimuth",
-    "gun_azimuth",
-    "GunAzimut",
-    "GunAzimuth",
-    "azimuthDeg",
-    "azimuth_deg",
-    "azimuth",
-    "Azimuth",
-    "angleDeg",
-    "angle_deg",
-    "angle",
-  ];
-  const pick = (obj: Record<string, unknown>): unknown => {
-    for (const k of keys) {
-      if (obj[k] !== undefined && obj[k] !== null) return obj[k];
-    }
-    for (const v of Object.values(obj)) {
-      if (v && typeof v === "object" && !Array.isArray(v)) {
-        const nested = pick(v as Record<string, unknown>);
-        if (nested !== undefined) return nested;
-      }
-    }
-    return undefined;
-  };
-  const raw = pick(src);
-  const azimuth = Number(raw);
-  if (!Number.isFinite(azimuth)) return undefined;
-  return ((azimuth % 360) + 360) % 360;
-}
+  [WsMessageName.MissionsList]: (data, store) => {
+    applyMissionsListPayload(data, store);
+  },
 
-function applyLosAzimuthToMyPosition(payload: unknown, store: Store) {
-  const gunAzimut = parseLosFromPayload(payload);
-  if (!Number.isFinite(gunAzimut)) return;
-  const m = store.getState().myPosition;
-  store.dispatch(setMyPosition({
-    coordinates: m.coordinates,
-    heading: m.heading ?? 0,
-    gunAzimut,
-    los: m.los,
-  }));
-}
+  [WsMessageName.MissionsListUpdate]: (data, store) => {
+    applyMissionsListPayload(data, store);
+  },
 
-/**
- * הודעת TMAPS_PARAMS החדשה: שומר את כל השדות ב-slice ייעודי,
- * ומעדכן את מיקום המפה (myPosition) לפי עדיפות: manual (אם use_manual) → gps (אם use_gps) → tmaps → כל מה שקיים.
- */
-function applyTmapsParamsFromPayload(data: unknown, store: Store) {
-  const d = (data ?? {}) as Record<string, unknown>;
-  const gps = parseLLA(d.gps_pos);
-  const tmaps = parseLLA(d.tmaps_pos);
-  const manual = parseLLA(d.manual_pos);
-  const useGps = Boolean(d.use_gps);
-  const useManual = Boolean(d.use_manual);
-  const heading = Number.isFinite(Number(d.heading)) ? Number(d.heading) : 0;
-  const pitch = Number.isFinite(Number(d.pitch)) ? Number(d.pitch) : 0;
-  const roll = Number.isFinite(Number(d.roll)) ? Number(d.roll) : 0;
-  const dist = Number.isFinite(Number(d.distance_travelled)) ? Number(d.distance_travelled) : 0;
-  const zoneRaw = Number(d.zone);
-  const zone = Number.isFinite(zoneRaw) ? zoneRaw : null;
-  const figRaw = Number(d.fig_of_merit);
-  const fig = Number.isFinite(figRaw) ? figRaw : null;
+  [WsMessageName.GetDb]: (data, store) => {
+    applyGetDbPayload(data, store);
+  },
 
-  const tmapsState: TmapsParamsState = {
-    gpsPos: gps,
-    tmapsPos: tmaps,
-    manualPos: manual,
-    useGps,
-    useManual,
-    zone,
-    figOfMerit: fig,
-    heading,
-    pitch,
-    roll,
-    distanceTravelled: dist,
-  };
-  store.dispatch(setTmapsParams(tmapsState));
+  [WsMessageName.MissionData]: (data, store) => {
+    applyMissionDataPayload(data, store);
+  },
 
-  let coords: Coordinates | null = null;
-  if (useManual && manual) coords = manual;
-  else if (useGps && gps) coords = gps;
-  else if (tmaps) coords = tmaps;
-  else coords = manual ?? gps ?? tmaps;
-
-  if (!coords) return;
-
-  const prev = store.getState().myPosition;
-  store.dispatch(setMyPosition({
-    coordinates: coords,
-    heading,
-    gunAzimut: prev.gunAzimut,
-    los: prev.los,
-  }));
-}
-
-export const messageHandlers: Record<string, MessageHandler> = {
-  ENTITY_CREATED: (data, store) => {
+  [WsMessageName.MissionDataUpdate]: (data, store) => {
+    applyMissionDataPayload(data, store);
+  },
+  [WsMessageName.EntityCreated]: (data, store) => {
     if (!data) return;
     const serverId = (typeof data.new_id === 'string' && data.new_id) || null;
     const localId = (typeof data.temp_id === 'string' && data.temp_id) || null;
@@ -325,57 +268,61 @@ export const messageHandlers: Record<string, MessageHandler> = {
     store.dispatch(confirmEntityCreated({ localId, serverId }));
   },
 
-  ENTITY_DELETED: (data, store) => {
-    const { entityId } = data ?? {};
-    if (!entityId) return;
-    store.dispatch(removeEntity(entityId));
+  [WsMessageName.Position]: (data: MessageMap['TMAPS_PARAMS'], store) => {
+    const { gps_pos, tmaps_pos, manual_pos, use_gps, use_manual, zone, fig_of_merit, heading, pitch, roll, distance_travelled } = data ?? {};
+    if (!gps_pos && !tmaps_pos && !manual_pos) return;
+    const cord = use_manual ? manual_pos : tmaps_pos;
+    const hedingData = use_manual ? manual_pos.heading : heading;
+    store.dispatch(setMyPosition({
+      coordinates: { lat: Number(cord.lat), lng: Number(cord.lng) },
+      heading: hedingData,
+      gps_pos,
+      tmaps_pos,
+      manual_pos,
+      use_gps,
+      use_manual,
+      zone,
+      fig_of_merit,
+      pitch,
+      roll,
+      distance_travelled
+    }));
   },
 
-  MISSIONS_LIST: (data, store) => applyMissionsListPayload(data, store),
-
-  MISSIONS_LIST_UPDATE: (data, store) => applyMissionsListPayload(data, store),
-
-  GET_DB: (data, store) => applyGetDbPayload(data, store),
-
-  MISSION_DATA: (data, store) => applyMissionDataPayload(data, store),
-
-  MISSION_DATA_UPDATE: (data, store) => applyMissionDataPayload(data, store),
-
-  /** פרוטוקול חדש — מחליף את POSITION */
-  TMAPS_PARAMS: (data, store) => applyTmapsParamsFromPayload(data, store),
-
-  /** תאימות לאחור: POSITION ישנה — מיקום/heading בלבד (LOS מגיע בהודעה ייעודית). */
-  POSITION: (data, store) => {
-    const { valid, heading } = (data ?? {}) as Record<string, unknown>;
-    if (!valid || typeof valid !== 'object') return;
-    const v = valid as Record<string, unknown>;
-    const lat = Number(v.lat);
-    const lng = Number(v.lng);
-    if (!isValidLatLng({ lat, lng })) return;
-    const altRaw = Number(v.alt);
-    const alt = Number.isFinite(altRaw) ? altRaw : 0;
-    const h = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-
-    applyTmapsParamsFromPayload({
-      gps_pos: { lat, lng, alt },
-      tmaps_pos: { lat, lng, alt },
-      use_gps: true,
-      use_manual: false,
-      heading: h,
-      pitch: 0,
-      roll: 0,
-      distance_travelled: 0,
-    }, store);
-
+  [WsMessageName.OdoCaliFinished]: (store) => {
+    if (!store) return;
+    store.dispatch(updateMyCali(CaliModeE.YES));
   },
 
-  SAVE_RESULT: () => { },
+  [WsMessageName.TmapsBitStatus]: (data, store) => {
+    store.dispatch(appendInboundWsMessage(data));
+  },
 
-  RECOMMEND_ASSIGNMENT: () => { },
+  [WsMessageName.SaveResult]: () => { },
 
-  LOS_RESULT: (d, store) => {
-    // Some integrations send azimuth in LOS_RESULT; update gun azimuth when present.
-    applyLosAzimuthToMyPosition(d, store);
+  [WsMessageName.RecommendAssignment]: (data, store) => {
+    if (Array.isArray(data)) {
+      data.forEach((id) => { if (typeof id === 'string') store.dispatch(setTargetRecommendation({ id, isRecommended: true })); });
+      return;
+    }
+    const id = data?.targetId || data?.id;
+    if (typeof id === 'string') {
+      store.dispatch(setTargetRecommendation({ id, isRecommended: true }));
+    } else if (Array.isArray(data?.targetId)) {
+      data.targetId.forEach((tid: string) => {
+        if (typeof tid === 'string') store.dispatch(setTargetRecommendation({ id: tid, isRecommended: true }));
+      });
+    }
+  },
+
+  [WsMessageName.Gun_Params]: (data, store) => {
+    const gunAzimut = data?.sight_azimuth;
+    store.dispatch(updateGunAzimut({
+      sight_azimuth: gunAzimut
+    }));
+  },
+
+  [WsMessageName.LosResult]: (d, store) => {
     store.dispatch(setLOS({
       center: d.center,
       radiusMeters: d.radiusMeters,
@@ -385,92 +332,92 @@ export const messageHandlers: Record<string, MessageHandler> = {
     }));
   },
 
-  LOS_UPDATE: (d, store) => {
-    applyLosAzimuthToMyPosition(d, store);
-  },
-
-  TARGETS: (data, store) => {
+  [WsMessageName.TargetsData]: (data, store) => {
     if (!__TARGETS_RT.cleanupStarted) {
-      setInterval(() => {
+      __TARGETS_RT.cleanupInterval = setInterval(() => {
         const now = Date.now();
-        const removeIds: string[] = [];
         for (const id of Object.keys(__TARGETS_RT.lastUpdate)) {
           if (now - __TARGETS_RT.lastUpdate[id] > TARGETS_CLEANUP_MS) {
             delete __TARGETS_RT.lastUpdate[id];
             delete __TARGETS_RT.seenAt[id];
-            removeIds.push(id);
+            store.dispatch(removeTarget(id));
           }
         }
-        if (removeIds.length > 0) {
-          store.dispatch(applyTargetsFrame({ updates: [], removeIds }));
+        const st = store.getState();
+        const allIds: string[] = (st.targets && st.targets.allIds) || [];
+        const hasTargets = allIds.length > 0 || Object.keys(__TARGETS_RT.lastUpdate).length > 0;
+        if (!hasTargets && __TARGETS_RT.cleanupInterval) {
+          clearInterval(__TARGETS_RT.cleanupInterval);
+          __TARGETS_RT.cleanupInterval = null;
+          __TARGETS_RT.cleanupStarted = false;
         }
       }, 1000);
       __TARGETS_RT.cleanupStarted = true;
     }
+
     const arr = Array.isArray(data) ? data : [data];
     __TARGETS_RT.stamp++;
+
     const stamp = __TARGETS_RT.stamp;
     const now = Date.now();
-    const stateNow = store.getState();
-    const currentById: Record<string, unknown> = (stateNow.targets && stateNow.targets.byId) || {};
-    const updates: Target[] = [];
+
     for (const td of arr) {
-      const parsed = parseTargetFromTARGETS(td);
-      if (!parsed) continue;
-      const id = parsed.id;
+      const {
+        coordinates,
+        heading,
+        id,
+        range,
+        is_recommended_by_tera,
+        speed,
+        state,
+        platform,
+        identity,
+        risk_level
+      } = td ?? {};
+      if (!id || !isValidLatLng(coordinates)) continue;
+
       const last = __TARGETS_RT.lastUpdate[id] || 0;
-      const isNewInRedux = currentById[id] == null;
-      // חשוב: מטרה חדשה חייבת להיכנס מיד ל-Redux, גם אם cache throttle ישן נשאר בזיכרון.
-      if (isNewInRedux || now - last >= TARGETS_UPDATE_THROTTLE_MS) {
-        updates.push(parsed);
+      if (now - last >= TARGETS_UPDATE_THROTTLE_MS) {
+        const target = {
+          id,
+          coordinates,
+          heading: Number.isFinite(heading) ? heading : 0,
+          range: range,
+          speed: Number.isFinite(speed) ? speed : 0,
+          type: TargetType[platform],
+          status: TargetState[state],
+          friend: !!identity,
+          isRecommended: !!is_recommended_by_tera,
+          risk_level: risk_level
+        };
+        store.dispatch(updateTarget(target));
         __TARGETS_RT.lastUpdate[id] = now;
       }
       __TARGETS_RT.seenAt[id] = stamp;
     }
-    const removeIds: string[] = [];
-    const shouldReconcile = now - __TARGETS_RT.lastReconcileAt >= TARGETS_RECONCILE_EVERY_MS;
-    if (shouldReconcile) {
-      __TARGETS_RT.lastReconcileAt = now;
-      const preState = store.getState();
-      const allIdsPrev: string[] = (preState.targets && preState.targets.allIds) || [];
-      for (const id of allIdsPrev) {
-        const seen = __TARGETS_RT.seenAt[id] || 0;
-        if (seen < stamp - TARGETS_RECONCILE_GRACE) {
-          delete __TARGETS_RT.lastUpdate[id];
-          delete __TARGETS_RT.seenAt[id];
-          removeIds.push(id);
-        }
+
+    const st = store.getState();
+    const allIds: string[] = (st.targets && st.targets.allIds) || [];
+    for (const id of allIds) {
+      const seen = __TARGETS_RT.seenAt[id] || 0;
+      if (seen < stamp - TARGETS_RECONCILE_GRACE) {
+        delete __TARGETS_RT.lastUpdate[id];
+        delete __TARGETS_RT.seenAt[id];
+        store.dispatch(removeTarget(id));
       }
     }
-    if (updates.length > 0 || removeIds.length > 0) {
-      store.dispatch(applyTargetsFrame({ updates, removeIds }));
+  },
+
+  [WsMessageName.RadarStatus]: (data, store) => {
+    if (Object.keys(normalizeInboundRadarParamsWire(data)).length > 0) {
+      store.dispatch(receiveRadarParamsFromServer(data));
     }
+    const st = mapRadarWireStateToStatus((data as Record<string, unknown> | undefined)?.state);
+    if (st !== undefined) store.dispatch(setStatus(st));
   },
 
-  /** באותו פרויקט – רק פורמט TARGETS (Periodic) עם השדות מהמפרט. TARGETS_DATA מפנה לאותה לוגיקה. */
-  TARGETS_DATA: (data, store) => {
-    messageHandlers.TARGETS(data, store);
-  },
-
-  RADAR_STATUS: (data, store) => {
-    const { state, mission_category, radar1_status, radar2_status, radar3_status, radar4_status, freq_index, hfl1_status, hfl2_status, hfl3_status, hfl4_status } = data ?? {};
-    const radarValues = {
-      state: state || 'ACTIVE',
-      mission_category: mission_category || '',
-      radar1_status: radar1_status,
-      radar2_status: radar2_status,
-      radar3_status: radar3_status,
-      radar4_status: radar4_status,
-      freq_index: freq_index,
-      hfl1_status: hfl1_status,
-      hfl2_status: hfl2_status,
-      hfl3_status: hfl3_status,
-      hfl4_status: hfl4_status,
-    };
-    store.dispatch(updateServerValues(radarValues));
-  },
-
-  CONFIRM_POSITION: (_data, store) => {
+  [WsMessageName.ConfirmPosition]: (store) => {
+    if (!store) return;
     store.dispatch(showPrompt(({
       title: "אשר את המיקום של INS",
       message: "אנא אשר שזה המיקום האמתי שלך ",
@@ -479,35 +426,43 @@ export const messageHandlers: Record<string, MessageHandler> = {
     })));
   },
 
-  RADAR_PARAMS: (data, store) => {
-    const { radar_mode, mission_category, freq_index } = data;
-
-    const radarValues = {
-      mode: radar_mode,
-      freqIndex: freq_index,
-      missionCategory: mission_category,
-    };
-
-    store.dispatch(updateParamsValues(radarValues));
+  [WsMessageName.RadarParams]: (data, store) => {
+    store.dispatch(receiveRadarParamsFromServer(data));
   },
 
-  RADAR_BIT_STATUS: async (ev, store) => {
+  [WsMessageName.RadarParamsUpdate]: (data, store) => {
+    store.dispatch(receiveRadarParamsFromServer(data));
+  },
+
+  [WsMessageName.RadarBitStatus]: async (ev, store) => {
     const DEFAULT_DEVICE = "RADAR"
-    const data = typeof ev === "string" ? JSON.parse(ev) : ev;
+    let data: any;
+    try {
+      data = typeof ev === "string" ? JSON.parse(ev) : ev;
+    } catch (e) {
+      console.error("RADAR_BIT_STATUS parse error:", e);
+      return;
+    }
     const snap = mapPayloadToSnapshot(DEFAULT_DEVICE, data);
     store.dispatch(setCategorySnapshot({
       category: "RADAR",
-      faults : snap.items,
+      faults: snap.items,
     }));
   },
 
-  /** תצוגה בפאנל סיידבר BIT — ללא לוגיקה נוספת (או הרחבה לפי מפרט) */
-  BIT_STATUS: () => { },
+  [WsMessageName.TargetAssigned]: (data, store) => {
+    const targetId = data?.targetId || data?.id;
+    if (!targetId) return;
+    store.dispatch(setTargetLineLayer({ id: targetId, lineLayerId: `target-line-${targetId}` }));
+  },
 
-  TARGET_Assigned: () => { },
-  TARGET_LOCK: () => { },
+  [WsMessageName.TargetLock]: (data, store) => {
+    const targetId = data?.targetId || data?.id;
+    if (!targetId) return;
+    store.dispatch(setTargetIconLayer({ id: targetId, iconLayerId: `lock-icon-${targetId}` }));
+  },
 
-  SYSTEM_STATUS: (data, store) => {
+  [WsMessageName.SystemStatus]: (data, store) => {
     store.dispatch(setGunStatus(data?.gun_status));
     store.dispatch(setInsStatus(data?.tmaps_status));
     store.dispatch(setStatus(data?.radar_status));
@@ -515,114 +470,16 @@ export const messageHandlers: Record<string, MessageHandler> = {
 
   },
 
-  TARGET_DESTROYED: () => { },
+  [WsMessageName.TargetDestroyed]: (data, store) => {
+    const targetId = data?.targetId || data?.id;
+    if (!targetId) return;
+    store.dispatch(markTargetAsDestroyed(targetId));
+  },
 
-  GUN_BIT_STATUS: (data, store) => {
+  [WsMessageName.GunBitStatus]: (data, store) => {
     const status = data?.status;
     if (!status) return;
     store.dispatch(setGunStatus(status));
-  },
-
-  MISSILE_STATUS: (data, store) => {
-    const status = data?.status;
-    if (status !== 'OK' && status !== 'NOT_OK') return;
-
-    // עדכון צבע ה‑GUN ב‑Status Bar
-    store.dispatch(setGunStatus(status === 'OK' ? GunStatusE.READY : GunStatusE.FAIL));
-
-    // שמירת סטטוס ורייזן עבור ה‑Popup בלחיצה על GUN
-    store.dispatch(
-      setMissileHealth({
-        status,
-        reason: typeof data?.reason === 'string' ? data.reason : null,
-      })
-    );
-  },
-
-  GPS_STATUS: (data, store) => {
-    const status = data?.status;
-    if (status === 'OK') {
-      store.dispatch(setInsStatus(InsStatusE.OK));
-    } else if (status === 'NOT_OK') {
-      store.dispatch(setInsStatus(InsStatusE.FAIL));
-    }
-  },
-
-  ACK_FAILED: (data, store) => {
-    const msg: string | undefined =
-      (typeof data?.pop_up_message === 'string' && data.pop_up_message.trim()) || undefined;
-    if (!msg) return;
-    // נשתמש ב‑confirmSlice כ‑Popup מודרני חד‑פעמי עם כפתור סגירה אחד
-    store.dispatch(
-      showPrompt({
-        title: "ACK FAILED",
-        message: msg,
-        confirmText: "אישור",
-        cancelText: undefined,
-        kind: "ACK_FAILED",
-      })
-    );
-  },
-
-  MISSILE_WARNINGS: (data, store) => {
-    if (!data) return;
-    const arr = Array.isArray(data) ? data : [data];
-
-    // קיבוץ לפי FailureDisplayGroup כך שכל קבוצה תופיע כקטגוריה נפרדת בטופס התקלות
-    const byGroup: Record<string, { code: number; description: string; severity: ErrorSeverityE; state: ErrorStateE; }[]> = {};
-
-    arr.forEach((raw: any, idx: number) => {
-      if (!raw) return;
-      const group: string = String(raw.FailureDisplayGroup || "MISSILE").trim() || "MISSILE";
-      const code = Number(raw.code ?? idx);
-      const desc: string = String(raw.GCU_Display_name || raw.description || `Missile warning ${code}`).slice(0, 80);
-      const sevNum = Number(raw.Severity);
-      const severity: ErrorSeverityE =
-        sevNum in ErrorSeverityE ? (sevNum as ErrorSeverityE) : ErrorSeverityE.WARNING;
-      const state: ErrorStateE = ErrorStateE.EXISTS;
-
-      if (!byGroup[group]) byGroup[group] = [];
-      byGroup[group].push({ code, description: desc, severity, state });
-    });
-
-    const now = Date.now();
-    Object.entries(byGroup).forEach(([group, faults]) => {
-      store.dispatch(setCategorySnapshot({
-        category: group,
-        faults,
-        receivedAt: now,
-      }));
-    });
-  },
-
-  SYSTEM_LOG: (data, store) => {
-    const logData = data?.log_data;
-    if (logData != null) store.dispatch(appendLog(String(logData)));
-  },
-
-  MISSILE_POSITION: (data, store) => {
-    const arr = Array.isArray(data) ? data : [data];
-    arr.forEach((m) => {
-      const coords = m?.coordinates ?? {
-        lat: Number(m?.lat ?? m?.latitude ?? m?.msl_latitude),
-        lng: Number(m?.lng ?? m?.lon ?? m?.longitude ?? m?.msl_longitude),
-        alt: Number(m?.alt ?? m?.altitude ?? m?.msl_altitude),
-      };
-      if (!isValidLatLng(coords)) return;
-      const id = m?.id ?? m?.missileId ?? 'missile-1';
-      const nextLat = Number(m?.nextCoordinates?.lat ?? m?.NextWp_latitude ?? m?.nextWp_latitude ?? m?.NextWpLatitude ?? m?.next_wp_lat ?? m?.nextWpLatitude);
-      const nextLng = Number(m?.nextCoordinates?.lng ?? m?.NextWp_Longitude ?? m?.nextWp_longitude ?? m?.NextWpLongitude ?? m?.next_wp_lon ?? m?.nextWpLongitude);
-      const nextCoords = Number.isFinite(nextLat) && Number.isFinite(nextLng) && nextLat >= -90 && nextLat <= 90 && nextLng >= -180 && nextLng <= 180
-        ? { lat: nextLat, lng: nextLng }
-        : undefined;
-      store.dispatch(upsertMissile({
-        id: String(id),
-        coordinates: { lat: Number(coords.lat), lng: Number(coords.lng), alt: Number.isFinite(coords.alt) ? coords.alt : undefined },
-        heading: Number.isFinite(m?.heading ?? m?.msl_heading) ? (m.heading ?? m.msl_heading) : undefined,
-        speed: Number.isFinite(m?.speed ?? m?.msl_groundspeed) ? (m.speed ?? m.msl_groundspeed) : undefined,
-        nextCoordinates: nextCoords ?? undefined,
-      }));
-    });
   }
 };
 

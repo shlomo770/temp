@@ -2,6 +2,7 @@ import { useAppDispatch } from "../../hooks/useAppDispatch";
 import { useAppSelector } from "../../hooks/useAppSelector";
 import { closePrompt } from "../../store/slices/confirmSlice";
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { WsMessageName } from "../../enums/ws.enum";
 import { useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -12,7 +13,7 @@ export const ConfirmPromptInsLocation = () => {
     const dispatch = useAppDispatch();
     const backdropRef = useRef<HTMLDivElement | null>(null);
     const confirmLocation = (ans: boolean) => {
-        sendMessage('CONFIRM_POSITION', { confirmed: ans });
+        sendMessage(WsMessageName.ConfirmPosition, { confirmed: ans });
         dispatch(closePrompt());
     }
     if (!prompt) return null;

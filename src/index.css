@@ -1,6 +1,13 @@
 @import 'maplibre-gl/dist/maplibre-gl.css';
 @import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
+/* SweetAlert2 — עקביות עם ממשק כהה / RTL */
+.jbk-swal-popup {
+  direction: rtl;
+  font-family: inherit;
+  border-radius: 0.75rem;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -59,26 +66,8 @@ body {
 }
 
 
-/* סרגל קנה מידה — קו דק ועדין */
-.maplibregl-ctrl-scale {
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-  min-height: auto !important;
-  font-size: 9px !important;
-  font-weight: 500 !important;
-  color: rgba(255, 255, 255, 0.35) !important;
-  letter-spacing: 0.02em;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-}
-.maplibregl-ctrl-scale::before {
-  content: '';
-  display: block;
-  width: 100%;
-  height: 1px;
-  margin-bottom: 2px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.2) 100%);
+.maplibregl-ctrl-scale{
+  @apply bg-transparent font-bold text-base px-3 text-center py-1
 }
 
 /* Ensure proper map container */
@@ -256,49 +245,18 @@ body {
   /* For WebKit browsers */
 }
 
-/* Modern slim scrollbar */
-.scrollbar-modern::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.scrollbar-modern::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.35);
-  border-radius: 9999px;
-}
-
-.scrollbar-modern::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(148, 163, 184, 0.9), rgba(100, 116, 139, 0.9));
-  border-radius: 9999px;
-}
-
-.scrollbar-modern::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(226, 232, 240, 0.95), rgba(148, 163, 184, 0.95));
-}
-
-.scrollbar-modern {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.9) rgba(15, 23, 42, 0.35);
-}
-
 input[type="range"].brightness {
-  --track-h: 6px;
-  --thumb: 14px;
+  --track-h: 12px;
+  --thumb: 18px;
   --border: 2px;
-  border-radius: 9999px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 
 input[type="range"].brightness::-webkit-slider-runnable-track {
   height: var(--track-h);
-  border-radius: 9999px;
-  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.35);
 }
 
 input[type="range"].brightness::-moz-range-track {
   height: var(--track-h);
-  border-radius: 9999px;
-  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.35);
 }
 
 input[type="range"].brightness::-webkit-slider-thumb {
@@ -308,8 +266,8 @@ input[type="range"].brightness::-webkit-slider-thumb {
   margin-top: calc((var(--track-h) - var(--thumb)) / 2);
   border: var(--border) solid #2F67FF;
   border-radius: 9999px;
-  background: #ffffff;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
 }
 
 input[type="range"].brightness::-moz-range-thumb {
@@ -317,8 +275,8 @@ input[type="range"].brightness::-moz-range-thumb {
   height: var(--thumb);
   border: var(--border) solid #2F67FF;
   border-radius: 9999px;
-  background: #ffffff;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
 }
 
 @keyframes scaleIn {

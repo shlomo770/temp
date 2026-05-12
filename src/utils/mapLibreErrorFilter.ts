@@ -35,18 +35,6 @@ export const isMapLibreError = (error: any): boolean => {
   );
 };
 
-/** True if this is the "image could not be decoded" / missing tile error (for offline maps) */
-export const isMapLibreImageDecodeError = (error: any): boolean => {
-  if (!error) return false;
-  const msg = typeof error === 'string' ? error : (error.message || error.toString() || '');
-  const lower = msg.toLowerCase();
-  return (
-    lower.includes('could not load image') ||
-    lower.includes('source image could not be decoded') ||
-    (lower.includes('could not be decoded') && (lower.includes('png') || lower.includes('jpeg') || lower.includes('supported image') || lower.includes('svg')))
-  );
-};
-
 /**
  * Safe console.error that filters out MapLibre errors
  * Use this in MapLibre event handlers instead of global override

@@ -15,11 +15,8 @@ import systemStateSlice from './slices/systemSlice';
 import faultsReducer from "./slices/faultsSlice";
 import confirmReducer from "./slices/confirmSlice";
 import tabozoonReducer from "./slices/TabozoonSlice";
-import ammoReducer from "./slices/ammoSlice";
-import missilesReducer from "./slices/missilesSlice";
-import logsReducer from "./slices/logsSlice";
-import tmapsParamsReducer from "./slices/tmapsParamsSlice";
 import wsInboundReducer from "./slices/wsInboundSlice";
+
 
 export const store = configureStore({
   reducer: {
@@ -39,10 +36,6 @@ export const store = configureStore({
     faults: faultsReducer,
     confirm: confirmReducer,
     tabozoon: tabozoonReducer,
-    ammo: ammoReducer,
-    missiles: missilesReducer,
-    logs: logsReducer,
-    tmapsParams: tmapsParamsReducer,
     wsInbound: wsInboundReducer,
   }
 });

@@ -3,12 +3,12 @@ import React, { memo } from "react";
 const RenderDroneIcon: React.FC = () => {
     let color = "#ffffff";
     return (
-        <div className="relative mt-2">
+        <div className="relative ">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 66"
                 fill={color}
                 stroke={color}
                 strokeWidth="2"
-                className="w-9 h-9">
+                className="w-6 h-6">
                 <g fill={color} stroke={color} strokeWidth="1.5">
                     <circle cx="8.75" cy="8.75" r="2.81" />
                     <circle cx="39.25" cy="39.25" r="2.81" />

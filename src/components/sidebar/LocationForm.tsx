@@ -1,227 +1,136 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import ToggleSwitch from "../ui/ToggleSwitch";
 import { useAppSelector } from "../../hooks/useAppSelector";
 import { useAppDispatch } from "../../hooks/useAppDispatch";
-import { useCoordinateFormat } from "../../hooks/useCoordinateFormat";
-import { updateMyCoordinates } from "../../store/slices/myPositionSlice";
+import { updateMyCali, updateMyCoordinates } from "../../store/slices/myPositionSlice";
+import { useWebSocket } from "../../hooks/useWebSocket";
+import { WsMessageName } from "../../enums/ws.enum";
+import { CaliModeE, PosTypeE } from "../../enums/general.enum";
+import { store } from "../../store/store";
 import { InsStatusE } from "../../enums/statusBar.enum";
-
-/** שורת נתון בעברית: תווית בימין (התחלה) · ערך משמאל — מספרים ב־LTR */
-function Row({
-  label,
-  children,
-  dense,
-}: {
-  label: string;
-  children: ReactNode;
-  dense?: boolean;
-}) {
-  return (
-    <div
-      dir="rtl"
-      className={`flex justify-between items-baseline gap-2 border-b border-gray-700/30 ${dense ? "py-1" : "py-1.5"}`}
-    >
-      <span className="text-xs text-gray-500 shrink-0 font-medium text-start">{label}</span>
-      <div className="min-w-0 text-end" dir="ltr">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/** קלט להזנה ידנית — קו תחתון; גרסה צרה לשורה אחת (קו רוחב · קו אורך · גובה) */
-const inputEditRow =
-  "w-full min-w-0 bg-transparent text-gray-100 border-0 border-b border-gray-600 py-1 text-sm font-sans leading-normal focus:outline-none focus:border-sky-500/80 transition-colors placeholder:text-gray-500";
+import { servers } from "../../config/communication.json";
+import { toggleCoordinateSystem, setUTMZone } from "../../store/slices/coordinatesSlice";
+import { formatCoordinates, parseUTMString, utmToWGS84 } from "../../utils/coordinates";
 
 const formatCoord = (n: number, decimals = 6) =>
   Number.isFinite(n) ? n.toFixed(decimals) : "—";
 
-/** השוואה צפה — מונעת לולאות עדכון כשלחיצה חוזרת על אותה נקודה */
-const COORD_EPS = 1e-9;
-function coordsNearlyEqual(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number }
-): boolean {
-  return (
-    Math.abs(a.lat - b.lat) < COORD_EPS &&
-    Math.abs(a.lng - b.lng) < COORD_EPS
-  );
-}
+export const formatOneDecimal = (value: number | undefined | null): string => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return value.toFixed(1);
+};
 
-type SignalQualityHe = "חלש" | "בינוני" | "חזק" | "מצוין";
-type SignalQualityEn = "Weak" | "Medium" | "Strong" | "Excellent";
+const inputField =
+  "w-full min-w-0 rounded border border-zinc-600 bg-zinc-950 px-2 py-1.5 text-center text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500/30";
 
-function insToGpsQuality(
-  status: InsStatusE
-): { he: SignalQualityHe; en: SignalQualityEn; bars: number } {
-  switch (status) {
-    case InsStatusE.OK:
-      return { he: "מצוין", en: "Excellent", bars: 4 };
-    case InsStatusE.ALIGN:
-      return { he: "בינוני", en: "Medium", bars: 2 };
-    case InsStatusE.IGNORE_GPS:
-      return { he: "חזק", en: "Strong", bars: 3 };
-    case InsStatusE.FAIL:
-      return { he: "חלש", en: "Weak", bars: 1 };
-    default:
-      return { he: "חלש", en: "Weak", bars: 0 };
-  }
-}
-
-function tmapsStatus(status: InsStatusE): {
-  he: string;
-  en: "Connected" | "Ready" | "Disconnected" | "Calibrating";
-} {
-  switch (status) {
-    case InsStatusE.OK:
-      return { he: "מחובר", en: "Connected" };
-    case InsStatusE.ALIGN:
-      return { he: "כיול", en: "Calibrating" };
-    case InsStatusE.IGNORE_GPS:
-      return { he: "מוכן", en: "Ready" };
-    default:
-      return { he: "מנותק", en: "Disconnected" };
-  }
-}
-
-function tmapsStatusTextClass(
-  en: ReturnType<typeof tmapsStatus>["en"]
-): string {
-  switch (en) {
-    case "Connected":
-      return "text-emerald-400";
-    case "Ready":
-      return "text-sky-400";
-    case "Calibrating":
-      return "text-amber-400";
-    default:
-      return "text-red-400/90";
-  }
-}
-
-function SignalBars({ bars, max = 4 }: { bars: number; max?: number }) {
-  return (
-    <div className="flex items-end gap-px h-3.5 opacity-90" aria-hidden>
-      {Array.from({ length: max }, (_, i) => (
-        <div
-          key={i}
-          className={`w-[2px] rounded-[1px] ${i < bars ? "bg-sky-400" : "bg-gray-600"}`}
-          style={{ height: `${5 + i * 2.5}px` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** ערכים בפונט מערכת רגיל (כמו שדות במכ״ם) */
-const val = "text-sm font-sans text-gray-100 tabular-nums";
-
-/** שורת מפסק זהה ל־RadarForm: אותן מחלקות, אותו ToggleSwitch */
-function RadarStyleToggleRow({
-  enabled,
-  onToggle,
-  rightLabel,
-  ariaLabel,
+function SectionCard({
+  title,
+  subtitle,
+  children,
 }: {
-  enabled: boolean;
-  onToggle: () => void;
-  rightLabel: string;
-  ariaLabel: string;
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
 }) {
   return (
-    <div className="mb-5" dir="ltr">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center">
-          <span
-            className={`mr-4 text-sm font-medium min-w-[60px] ${enabled ? "text-sky-200" : "text-gray-400"}`}
-          >
-            {enabled ? "פעיל" : "כבוי"}
-          </span>
-          <ToggleSwitch
-            checked={enabled}
-            onChange={onToggle}
-            activeColor="bg-sky-500"
-            inactiveColor="bg-gray-600"
-            size="md"
-            ariaLabel={ariaLabel}
-          />
-          <span className="ml-2 text-sm min-w-[60px] font-medium text-[transparent] select-none" aria-hidden>
-            .
-          </span>
+    <section className="rounded-lg border border-zinc-700/70 bg-zinc-900/35 overflow-hidden">
+      <div className="border-b border-zinc-700/50 bg-zinc-950/40 px-2.5 py-1.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h4 className="text-xs font-semibold text-zinc-100">{title}</h4>
+          {subtitle ? (
+            <span className="text-[10px] text-zinc-500 tabular-nums">{subtitle}</span>
+          ) : null}
         </div>
-        <span className="text-sm text-sky-100 font-medium">{rightLabel}</span>
       </div>
+      <div className="p-2 space-y-1.5">{children}</div>
+    </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 text-[11px] leading-tight">
+      <span className="text-zinc-500 shrink-0">{label}</span>
+      <span
+        className={`min-w-0 truncate text-left text-zinc-100 ${mono ? "font-mono tabular-nums" : "font-medium"}`}
+        dir="ltr"
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
-export interface LocationFormProps {
-  /** לחיצה אחרונה על המפה — כמו ב־Status Bar → TMAPS-INS כשמפעילים מיקום ידני */
-  clickedCoords?: { lat: number; lng: number } | null;
-}
-
-export default function LocationForm({ clickedCoords = null }: LocationFormProps) {
+export default function LocationForm() {
   const dispatch = useAppDispatch();
-  const { isUTM, formatPos } = useCoordinateFormat();
   const myPosition = useAppSelector((s) => s.myPosition);
-  const insStatus = useAppSelector((s) => s.ins.status);
-  const prevManualOpen = useRef(false);
-  /** נקודה אחרונה שסונכרנה מהמפה — מונעת setState כפול לאותו קליק */
-  const lastAppliedMapClickRef = useRef<{ lat: number; lng: number } | null>(null);
-
-  const [gpsEnabled, setGpsEnabled] = useState(true);
-  const [tmapsEnabled, setTmapsEnabled] = useState(true);
+  const tmapsStatus = useAppSelector((s) => s.ins.status);
+  const isUTM = useAppSelector((s) => s.coordinates.isUTM);
+  const utmZone = useAppSelector((s) => s.coordinates.utmZone);
+  const { sendMessage } = useWebSocket();
+  const [gpsEnabled, setGpsEnabled] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [latInput, setLatInput] = useState("");
   const [lngInput, setLngInput] = useState("");
-  const [altInput, setAltInput] = useState("");
+  const [altInput, setAltInput] = useState(0);
+  const [headInput, setHeadInput] = useState(0);
+  const [utmInput, setUtmInput] = useState("");
 
   const coords = myPosition.coordinates;
   const lat = coords?.lat ?? 0;
   const lng = coords?.lng ?? 0;
   const alt = coords?.alt ?? 0;
 
-  const positionDisplay = useMemo(() => formatPos(lat, lng), [formatPos, lat, lng]);
-  const gpsQ = useMemo(() => insToGpsQuality(insStatus), [insStatus]);
-  const tmaps = useMemo(() => tmapsStatus(insStatus), [insStatus]);
-  /** TMAPS מנותק (NO_COMM / FAIL וכו׳) — מאפרים את כל הבלוק מעל שורת הכפתורים */
-  const tmapsDisconnected = tmaps.en === "Disconnected";
-  const satelliteCount =
-    insStatus === InsStatusE.OK ? 12 : insStatus === InsStatusE.ALIGN ? 6 : 0;
+  const insBlocked = tmapsStatus === InsStatusE.NO_COMM;
 
-  const distanceKm = useMemo(() => {
-    const base = Math.abs(lat) + Math.abs(lng);
-    return (base % 1000) * 0.001;
-  }, [lat, lng]);
-
-  /** בעת פתיחת "הזנה ידנית" — טוען מהמיקום הנוכחי (לא מנקה בכל עדכון GPS בזמן עריכה) */
   useEffect(() => {
-    if (manualOpen && !prevManualOpen.current) {
+    if (manualOpen && myPosition.clickCord) {
+      setLatInput(myPosition.clickCord.lat.toString().slice(0, 7));
+      setLngInput(myPosition.clickCord.lng.toString().slice(0, 7));
+      setUtmInput(
+        formatCoordinates({ lat: myPosition.clickCord.lat, lng: myPosition.clickCord.lng }, isUTM, utmZone)
+      );
+    }
+  }, [myPosition.clickCord, manualOpen, isUTM, utmZone]);
+
+  useEffect(() => {
+    if (myPosition.use_manual) {
+      setManualOpen(true);
+    }
+  }, [myPosition.use_manual]);
+
+  useEffect(() => {
+    if (manualOpen) {
       setLatInput(formatCoord(lat));
       setLngInput(formatCoord(lng));
-      setAltInput(Number.isFinite(alt) ? formatCoord(alt, 2) : "0");
-      lastAppliedMapClickRef.current = null;
+      setUtmInput(formatCoordinates({ lat, lng }, isUTM, utmZone));
+      setHeadInput((h) => h || 0);
     }
-    prevManualOpen.current = manualOpen;
-  }, [manualOpen, lat, lng, alt]);
+  }, [manualOpen, lat, lng, isUTM, utmZone]);
 
-  /** כמו TMAPS-INS: בזמן שהזנה ידנית פתוחה, לחיצה על המפה ממלאת קו רוחב וקו אורך — בלי setState לריק */
   useEffect(() => {
-    if (!manualOpen || !clickedCoords) return;
-    const next = { lat: clickedCoords.lat, lng: clickedCoords.lng };
-    const prev = lastAppliedMapClickRef.current;
-    if (prev !== null && coordsNearlyEqual(prev, next)) return;
-    lastAppliedMapClickRef.current = next;
-    const latStr = formatCoord(next.lat);
-    const lngStr = formatCoord(next.lng);
-    setLatInput((p) => (p === latStr ? p : latStr));
-    setLngInput((p) => (p === lngStr ? p : lngStr));
-  }, [manualOpen, clickedCoords]);
+    if (manualOpen) {
+      if (latInput === "" || lngInput === "") {
+        setUtmInput(formatCoordinates({ lat, lng }, isUTM, utmZone));
+      } else {
+        setUtmInput(formatCoordinates({ lat: Number(latInput), lng: Number(lngInput) }, isUTM, utmZone));
+      }
+    }
+  }, [isUTM, manualOpen, latInput, lngInput, lat, lng, utmZone]);
 
-  const onConfirmManual = useCallback(() => {
+  const onConfirmManual = useCallback(async () => {
     const la = parseFloat(latInput.replace(/,/g, "."));
     const lo = parseFloat(lngInput.replace(/,/g, "."));
-    const al = parseFloat(altInput.replace(/,/g, "."));
+    const al = parseFloat(altInput.toString().replace(/,/g, "."));
+    let finaAlt = Number.isFinite(al) ? al : alt;
     if (!Number.isFinite(la) || !Number.isFinite(lo)) return;
     dispatch(
       updateMyCoordinates({
@@ -230,186 +139,267 @@ export default function LocationForm({ clickedCoords = null }: LocationFormProps
         alt: Number.isFinite(al) ? al : alt,
       })
     );
-    setManualOpen(false);
-  }, [dispatch, latInput, lngInput, altInput, alt]);
+    try {
+      const url = `http://${servers.mapServer}/elevation?lon=${lngInput}&lat=${latInput}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        finaAlt = data;
+        setAltInput(data);
+      }
+    } catch {
+      /* elevation optional */
+    }
+
+    sendMessage(WsMessageName.SetPosType, { pos: PosTypeE.Manual });
+    sendMessage(WsMessageName.SetPosition, {
+      manual_pos: {
+        lat: latInput,
+        lng: lngInput,
+        alt: finaAlt,
+        heading: headInput,
+      },
+    });
+  }, [dispatch, latInput, lngInput, headInput, altInput, alt, sendMessage]);
+
+  const posSourceLabel = myPosition.use_manual ? "ידני" : "TMAPS";
 
   return (
-    <div
-      dir="rtl"
-      lang="he"
-      className="w-full px-0.5 py-1 font-sans text-sm text-gray-200 antialiased"
-    >
-      <div
-        className={
-          tmapsDisconnected
-            ? "opacity-40 pointer-events-none select-none"
-            : ""
-        }
-        aria-disabled={tmapsDisconnected}
-      >
-        <header className="mb-3 pb-2 border-b border-gray-700/35">
-          <h3 className="text-base font-semibold text-white text-center">מיקום</h3>
-          <p className="text-xs text-gray-500 text-center mt-0.5">
-          GPS · TMAPS · קלט ידני · תצוגה: {isUTM ? "UTM" : "WGS84"} (סרגל עליון → INS)
-        </p>
-        </header>
+    <div dir="rtl" lang="he" className="w-full max-w-sm mx-auto px-1 py-0.5 font-sans text-zinc-200 antialiased">
+      <header className="mb-2 border-b border-zinc-700/60 pb-2">
+        <h3 className="text-base font-semibold tracking-tight text-zinc-50">מיקום</h3>
+        <p className="mt-0.5 text-[11px] text-zinc-500">מקורות GPS ו־TMAPS, כיול והזנה ידנית</p>
+      </header>
 
-        {/* GPS — שורת מפסק כמו בטופס מכ״ם */}
-        <section className="mb-3">
-          <RadarStyleToggleRow
-            enabled={gpsEnabled}
-            onToggle={() => setGpsEnabled(!gpsEnabled)}
-            rightLabel="אפשר GPS"
-            ariaLabel="אפשר GPS"
-          />
-
-          <div
-            className={`space-y-0 ${gpsEnabled ? "" : "opacity-35 pointer-events-none"}`}
-          >
-            <Row label={isUTM ? "מיקום (UTM)" : "מיקום (WGS84)"}>
-              <span className={`${val} text-xs break-all`}>{positionDisplay}</span>
-            </Row>
-            {/* גובה | מהירות | כיוון — 3 עמודות בשורה אחת */}
-              
-            <Row label="לוויינים" dense>
-              <span className={val}>{satelliteCount > 0 ? satelliteCount : "—"}</span>
-            </Row>
-            <Row label="אות GPS" dense>
-              <span className="flex items-center gap-2 flex-wrap justify-end flex-row-reverse">
-                <span className={val}>
-                  {gpsQ.he}
-                  <span className="text-gray-500 text-xs mx-0.5">({gpsQ.en})</span>
-                </span>
-                <SignalBars bars={gpsQ.bars} />
-              </span>
-            </Row>
-          </div>
-        </section>
-
-        {/* TMAPS */}
-        <section className="mb-3 pt-3 border-t border-gray-700/30">
-          <RadarStyleToggleRow
-            enabled={tmapsEnabled}
-            onToggle={() => setTmapsEnabled(!tmapsEnabled)}
-            rightLabel="אפשר TMAPS"
-            ariaLabel="אפשר TMAPS"
-          />
-
-          <div
-            className={`space-y-0 ${tmapsEnabled ? "" : "opacity-35 pointer-events-none"}`}
-          >
-            <Row label={isUTM ? "מיקום (UTM)" : "מיקום (WGS84)"}>
-              <span className={`${val} text-xs break-all`}>{positionDisplay}</span>
-            </Row>
-            <Row label="סטטוס" dense>
-              <span className={`text-xs font-medium ${tmapsStatusTextClass(tmaps.en)}`}>
-                {tmaps.he}
-                <span className="text-gray-500 font-normal mx-0.5">{tmaps.en}</span>
-              </span>
-            </Row>
-            <Row label="מרחק" dense>
-              <span className={val}>{distanceKm.toFixed(3)} ק״מ</span>
-            </Row>
-            <Row label="Pitch · Roll" dense>
-              <span className={`${val} text-xs`}>0.0° · 0.0°</span>
-            </Row>
-          </div>
-        </section>
-      </div>
-
-      <div
-        className={`flex flex-col gap-0 pt-2 border-t border-gray-700/30 ${!tmapsEnabled ? "opacity-35 pointer-events-none" : ""}`}
-      >
-        <button
-          type="button"
-          className="w-full py-1.5 text-xs font-medium text-sky-400/95 hover:text-sky-300 hover:bg-white/[0.03] rounded transition-colors text-start px-0.5"
+      <div className="space-y-2">
+        <div
+          className={`space-y-2 ${insBlocked ? "opacity-40 pointer-events-none select-none" : ""}`}
+          aria-hidden={insBlocked || undefined}
         >
-          התחל כיול
-        </button>
-        <button
-          type="button"
-          className="w-full py-1.5 text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-white/[0.03] rounded transition-colors text-start px-0.5"
-        >
-          יישור מחדש
-        </button>
-        <button
-          type="button"
-          onClick={() => setManualOpen((o) => !o)}
-          className="w-full py-1.5 text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-white/[0.03] rounded transition-colors text-start px-0.5"
-        >
-          {manualOpen ? "סגור הזנה ידנית" : "הזנת מיקום ידנית"}
-        </button>
-      </div>
-
-      {manualOpen && (
-        <div className="mt-2 pt-2 border-t border-gray-700/30 space-y-1.5" dir="rtl">
-          <p className="text-xs text-gray-500 text-start">הזנה ידנית · WGS84</p>
-
-          <div className="w-full" dir="ltr">
-            <div className="flex gap-1.5 items-end">
-              <div className="min-w-0 flex-[1.15]">
-                <label className="block text-[10px] text-gray-500 mb-0.5 truncate text-center font-sans" dir="rtl">
-                  קו רוחב
-                </label>
-                <input
-                  value={latInput}
-                  onChange={(e) => setLatInput(e.target.value)}
-                  placeholder="32.0853"
-                  className={inputEditRow}
-                  inputMode="decimal"
-                  autoComplete="off"
-                  spellCheck={false}
-                  title="Latitude"
-                />
-              </div>
-              <div className="min-w-0 flex-[1.15]">
-                <label className="block text-[10px] text-gray-500 mb-0.5 truncate text-center font-sans" dir="rtl">
-                  קו אורך
-                </label>
-                <input
-                  value={lngInput}
-                  onChange={(e) => setLngInput(e.target.value)}
-                  placeholder="34.7818"
-                  className={inputEditRow}
-                  inputMode="decimal"
-                  autoComplete="off"
-                  spellCheck={false}
-                  title="Longitude"
-                />
-              </div>
-              <div className="min-w-0 w-14 shrink-0 sm:w-16">
-                <label className="block text-[10px] text-gray-500 mb-0.5 truncate text-center font-sans" dir="rtl">
-                  גובה
-                </label>
-                <input
-                  value={altInput}
-                  onChange={(e) => setAltInput(e.target.value)}
-                  placeholder="מ׳"
-                  className={inputEditRow}
-                  inputMode="decimal"
-                  title="Altitude (m)"
-                />
-              </div>
+          <SectionCard title="GPS" subtitle={isUTM ? `UTM · ${utmZone}` : "WGS84"}>
+          <div className="flex items-center justify-between gap-2 py-0.5">
+            <span className="text-[11px] text-zinc-400">שימוש ב־GPS</span>
+            <div className="flex items-center gap-2" dir="ltr">
+              <span className="text-[11px] text-zinc-500 w-6 text-center">{gpsEnabled ? "כן" : "לא"}</span>
+              <ToggleSwitch
+                checked={gpsEnabled}
+                onChange={() => {
+                  sendMessage(WsMessageName.GpsIntegration, { use_gps: !gpsEnabled });
+                  setGpsEnabled(!gpsEnabled);
+                }}
+                activeColor="bg-sky-500"
+                inactiveColor="bg-zinc-600"
+                size="sm"
+                ariaLabel="שימוש ב-GPS"
+              />
             </div>
           </div>
+          <div
+            className="rounded border border-zinc-700/50 bg-zinc-950/50 px-2 py-1.5 font-mono text-[11px] leading-snug text-amber-200/95 break-all"
+            dir="ltr"
+            title={formatCoordinates(myPosition.gps_pos, isUTM, utmZone)}
+          >
+            {formatCoordinates(myPosition.gps_pos, isUTM, utmZone)}
+            <span className="text-zinc-500"> · </span>
+            <span className="text-zinc-300">Alt {myPosition.gps_pos.alt}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-0.5 border-t border-zinc-800/80">
+            <Stat label="Fig of merit" value={myPosition.fig_of_merit} mono />
+            <Stat label="אזור" value={myPosition.zone} mono />
+          </div>
+        </SectionCard>
 
-          <div className="flex gap-2 pt-0.5" dir="rtl">
+        <SectionCard title="TMAPS">
+          <div
+            className="rounded border border-zinc-700/50 bg-zinc-950/50 px-2 py-1.5 font-mono text-[11px] leading-snug text-amber-200/95 break-all"
+            dir="ltr"
+            title={formatCoordinates(myPosition.tmaps_pos, isUTM, utmZone)}
+          >
+            {formatCoordinates(myPosition.tmaps_pos, isUTM, utmZone)}
+            <span className="text-zinc-500"> · </span>
+            <span className="text-zinc-300">Alt {myPosition.tmaps_pos.alt}</span>
+          </div>
+          <div className="space-y-1 border-t border-zinc-800/80 pt-1.5">
+            <Stat label="מרחק מצטבר" value={myPosition.distance_travelled} mono />
+            <Stat label="כיול אודומטר" value={CaliModeE[myPosition.odo_cali_finished || 0]} />
+            <Stat label="מקור מיקום" value={posSourceLabel} />
+          </div>
+          <div className="grid grid-cols-3 gap-1 rounded border border-zinc-700/40 bg-zinc-950/30 p-1" dir="ltr">
+            {(
+              [
+                ["Hdg", myPosition.heading],
+                ["Pitch", myPosition.pitch],
+                ["Roll", myPosition.roll],
+              ] as const
+            ).map(([lab, v]) => (
+              <div key={lab} className="text-center px-0.5">
+                <div className="text-[9px] uppercase tracking-wide text-zinc-500">{lab}</div>
+                <div className="font-mono text-xs font-semibold text-zinc-100 tabular-nums">
+                  {formatOneDecimal(v)}
+                  <span className="text-[10px] font-normal text-zinc-500">°</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+        </div>
+
+        <div className="grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            disabled={insBlocked}
+            className="h-8 rounded-md border border-zinc-600 bg-zinc-800/80 text-[10px] font-medium text-sky-300 hover:bg-zinc-700 hover:text-sky-200 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            onClick={() => {
+              sendMessage(WsMessageName.StartOdoCali, {});
+              store.dispatch(updateMyCali(CaliModeE.NO));
+            }}
+          >
+            כיול
+          </button>
+          <button
+            type="button"
+            disabled={insBlocked}
+            className="h-8 rounded-md border border-zinc-600 bg-zinc-800/80 text-[10px] font-medium text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            onClick={() => sendMessage(WsMessageName.StartRealing, {})}
+          >
+            Realign
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setManualOpen((o) => {
+                const next = !o;
+                if (o) sendMessage(WsMessageName.SetPosType, { pos: PosTypeE.TMAPS });
+                return next;
+              });
+            }}
+            className={`h-8 rounded-md border text-[10px] font-medium transition-colors ${
+              manualOpen
+                ? "border-sky-600 bg-sky-950/50 text-sky-200"
+                : "border-zinc-600 bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700"
+            }`}
+          >
+            ידני
+          </button>
+        </div>
+
+        {manualOpen && (
+          <div className="rounded-lg border border-sky-900/40 bg-sky-950/10 p-2 space-y-2">
+            <div className="text-[10px] font-medium text-sky-200/90">הזנה ידנית</div>
+            <div className="w-full" dir="ltr">
+              <div className="flex flex-wrap gap-1.5 items-end">
+                {!isUTM && (
+                  <div className="flex flex-1 min-w-0 gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      <label className="mb-0.5 block text-center text-[9px] text-zinc-500" dir="rtl">
+                        קו רוחב
+                      </label>
+                      <input
+                        value={latInput}
+                        onChange={(e) => setLatInput(e.target.value)}
+                        placeholder="32.0853"
+                        className={inputField}
+                        inputMode="decimal"
+                        autoComplete="off"
+                        spellCheck={false}
+                        title="Latitude"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <label className="mb-0.5 block text-center text-[9px] text-zinc-500" dir="rtl">
+                        קו אורך
+                      </label>
+                      <input
+                        value={lngInput}
+                        onChange={(e) => setLngInput(e.target.value)}
+                        placeholder="34.7818"
+                        className={inputField}
+                        inputMode="decimal"
+                        autoComplete="off"
+                        spellCheck={false}
+                        title="Longitude"
+                      />
+                    </div>
+                  </div>
+                )}
+                {isUTM && (
+                  <div className="min-w-0 flex-1">
+                    <label className="mb-0.5 block text-center text-[9px] text-zinc-500" dir="rtl">
+                      UTM
+                    </label>
+                    <input
+                      value={utmInput}
+                      onChange={(e) => {
+                        setUtmInput(e.target.value);
+                        const latLngConvert = utmToWGS84(parseUTMString(e.target.value));
+                        setLatInput(latLngConvert.lat.toString().slice(0, 8));
+                        setLngInput(latLngConvert.lng.toString().slice(0, 8));
+                      }}
+                      className={inputField}
+                      inputMode="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      title="UTM"
+                    />
+                  </div>
+                )}
+                <div className="w-14 shrink-0">
+                  <label className="mb-0.5 block text-center text-[9px] text-zinc-500" dir="rtl">
+                    כיוון
+                  </label>
+                  <input
+                    value={headInput}
+                    onChange={(e) => setHeadInput(Number(e.target.value))}
+                    className={inputField}
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+            </div>
             <button
               type="button"
               onClick={onConfirmManual}
-              className="flex-1 py-1.5 text-xs font-medium text-sky-400 hover:text-sky-300 transition-colors text-center"
+              className="w-full h-8 rounded-md bg-sky-600 text-xs font-semibold text-white hover:bg-sky-500 transition-colors"
             >
-              אישור
-            </button>
-            <button
-              type="button"
-              onClick={() => setManualOpen(false)}
-              className="flex-1 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors text-center"
-            >
-              ביטול
+              אישור והגשה
             </button>
           </div>
+        )}
+
+        <div className="rounded-lg border border-zinc-700/60 bg-zinc-950/25 px-2 py-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] text-zinc-500">תצוגת קואורדינטות בממשק</span>
+            <button
+              type="button"
+              onClick={() => dispatch(toggleCoordinateSystem())}
+              className="rounded border border-zinc-600 bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-200 hover:bg-zinc-700"
+            >
+              {isUTM ? "UTM" : "WGS84"}
+            </button>
+          </div>
+          {isUTM && myPosition.use_manual && (
+            <label className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-zinc-400">
+              <span>אזור UTM</span>
+              <select
+                value={utmZone}
+                onChange={(e) => dispatch(setUTMZone(Number(e.target.value)))}
+                className="rounded border border-zinc-600 bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-100"
+              >
+                {[33, 34, 35, 36, 37, 38].map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
+      </div>
+
+      {insBlocked && (
+        <p className="mt-2 text-center text-[10px] text-amber-500/90 leading-relaxed px-1">
+          אין תקשורת TMAPS — נתוני GPS/TMAPS אינם מתעדכנים. הזנה ידנית והחלפת תצוגת קואורדינטות זמינות.
+        </p>
       )}
     </div>
   );
